@@ -46,6 +46,7 @@ import type {
   FindingsPage,
   FindingTraffic,
   FindingTrafficDetail,
+  FofaAccount,
   IntentAsset,
   InterceptApprovalFilter,
   InterceptApprovalRow,
@@ -813,6 +814,8 @@ export const api = {
   // ---- app settings (runtime toggles) ----
   settings: () => get<Settings>(`/settings`),
   setSettings: (patch: Partial<Settings>) => put<Settings>(`/settings`, patch),
+  // Live FOFA account/quota snapshot (key stays server-side).
+  fofaAccount: () => get<FofaAccount>(`/settings/fofa/account`),
   // Run a real "test" search with the given (or saved) config to verify it works.
   testWebSearch: (patch: {
     web_search_backend?: string;

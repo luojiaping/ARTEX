@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 import { CHAT_SEND_MODE_OPTIONS, type ChatSendMode, setChatSendMode, useChatSendMode } from "@/lib/chat-send-mode";
-import type { Settings } from "@/lib/types";
+import type { FofaAccount, Settings } from "@/lib/types";
 
 import { UpdateCard } from "./_components/update-card";
 
@@ -43,6 +43,9 @@ export default function SystemSettingsPage() {
   const [savingFofaKey, setSavingFofaKey] = React.useState(false);
   const [savingFofaBase, setSavingFofaBase] = React.useState(false);
   const [savingFofaRate, setSavingFofaRate] = React.useState(false);
+  const [fofaAccount, setFofaAccount] = React.useState<FofaAccount | null>(null);
+  const [fofaLoading, setFofaLoading] = React.useState(false);
+  const [fofaError, setFofaError] = React.useState("");
   const [workers, setWorkers] = React.useState("3");
   const [savingWorkers, setSavingWorkers] = React.useState(false);
   // 操作约束注入范围(默认都开)。
@@ -250,6 +253,7 @@ export default function SystemSettingsPage() {
         apply(s);
         setFofaKeyInput("");
         toast.success("已保存 FOFA API Key");
+        loadFofaAccount();
       })
       .catch((e) => toast.error("保存失败：" + (e as Error).message))
       .finally(() => setSavingFofaKey(false));
@@ -262,6 +266,8 @@ export default function SystemSettingsPage() {
       .then((s) => {
         apply(s);
         setFofaKeyInput("");
+        setFofaAccount(null);
+        setFofaError("");
         toast.success("已清除 FOFA API Key");
       })
       .catch((e) => toast.error("保存失败：" + (e as Error).message))
@@ -296,6 +302,25 @@ export default function SystemSettingsPage() {
       .catch((e) => toast.error("保存失败：" + (e as Error).message))
       .finally(() => setSavingFofaRate(false));
   };
+
+  // 拉取 FOFA 账号额度（后端代理 /settings/fofa/account，Key 不出浏览器）。
+  const loadFofaAccount = React.useCallback(() => {
+    setFofaLoading(true);
+    setFofaError("");
+    api
+      .fofaAccount()
+      .then((a) => setFofaAccount(a))
+      .catch((e) => {
+        setFofaAccount(null);
+        setFofaError((e as Error).message);
+      })
+      .finally(() => setFofaLoading(false));
+  }, []);
+
+  // 页面加载完成且已配置 Key 时自动拉一次（info/my 不消耗查询额度）。
+  React.useEffect(() => {
+    if (loaded && fofaKeySet) loadFofaAccount();
+  }, [loaded, fofaKeySet, loadFofaAccount]);
 
   // Run a real "test" search ("test") against the CURRENT form values (backend +
   // proxy + entered key), falling back to saved values server-side. Toasts result.
@@ -733,6 +758,78 @@ export default function SystemSettingsPage() {
               <p className="text-muted-foreground text-xs">
                 在 https://fofa.info/userInfo 获取。查询会消耗账号额度；工具会先查额度并在快用完时告警。
               </p>
+            </div>
+
+            <div className="rounded-md border p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">当前额度</p>
+                  <p className="text-muted-foreground text-xs">
+                    {fofaAccount
+                      ? `更新于 ${new Date(fofaAccount.checked_at).toLocaleString()}（info/my 不消耗查询次数）`
+                      : "info/my 接口不消耗查询次数"}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={loadFofaAccount}
+                  disabled={!loaded || fofaLoading || !fofaKeySet}
+                >
+                  {fofaLoading ? "查询中…" : "刷新"}
+                </Button>
+              </div>
+
+              {fofaError ? (
+                <p className="mt-3 break-all text-xs text-red-500">{fofaError}</p>
+              ) : fofaAccount ? (
+                <>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <div className="bg-muted/30 rounded-md p-2">
+                      <p className="text-muted-foreground text-[11px]">剩余查询次数</p>
+                      <p
+                        className={`mt-0.5 text-lg font-semibold tabular-nums ${
+                          fofaAccount.remain_api_query < 1000 ? "text-amber-500" : ""
+                        }`}
+                      >
+                        {fofaAccount.remain_api_query.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-muted/30 rounded-md p-2">
+                      <p className="text-muted-foreground text-[11px]">剩余数据量</p>
+                      <p className="mt-0.5 text-lg font-semibold tabular-nums">
+                        {fofaAccount.remain_api_data.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-muted/30 rounded-md p-2">
+                      <p className="text-muted-foreground text-[11px]">F 币 / F 点</p>
+                      <p className="mt-0.5 text-sm font-medium tabular-nums">
+                        {fofaAccount.fcoin.toLocaleString()} / {fofaAccount.fofa_point.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-muted/30 rounded-md p-2">
+                      <p className="text-muted-foreground text-[11px]">免费点</p>
+                      <p className="mt-0.5 text-sm font-medium tabular-nums">
+                        {fofaAccount.remain_free_point.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t pt-2 text-xs">
+                    <span>
+                      账号{" "}
+                      <span className="text-foreground font-mono">{fofaAccount.username}</span>
+                      {fofaAccount.email ? <span className="text-foreground font-mono"> · {fofaAccount.email}</span> : null}
+                    </span>
+                    <span>·</span>
+                    <span>{fofaAccount.isvip ? `VIP ${fofaAccount.vip_level}` : "普通账号"}</span>
+                  </div>
+                </>
+              ) : (
+                <p className="text-muted-foreground mt-3 text-xs">
+                  保存 Key 后自动加载；也可点「刷新」手动获取。
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-2 border-t pt-4">

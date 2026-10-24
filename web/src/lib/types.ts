@@ -908,6 +908,20 @@ export interface TrafficHost {
 }
 
 // ---- App settings (runtime toggles) ----
+// Live FOFA account/quota snapshot (proxied by /api/settings/fofa/account).
+export interface FofaAccount {
+  username: string;
+  email: string;
+  isvip: boolean;
+  vip_level: number;
+  remain_api_query: number;
+  remain_api_data: number;
+  remain_free_point: number;
+  fofa_point: number;
+  fcoin: number;
+  checked_at: string;
+}
+
 export interface Settings {
   traffic_capture: boolean;
   agent_traffic_binding: boolean; // Agent 自动绑定流量证据，默认关闭；不影响人工绑定
