@@ -97,7 +97,7 @@ function quotaSummary(entry: CredentialEntry): string {
   if (!q) return "—";
   const summary = q.summary;
   if (typeof summary === "string" && summary) return summary;
-  return "已取到额度";
+  return "—";
 }
 
 function statTone(value: number): string {
@@ -428,7 +428,7 @@ export default function CredentialsPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        {entry.source_url ? (
+                        {entry.source_url && !entry.source_url.startsWith("legacy://") ? (
                           <a
                             href={entry.source_url}
                             target="_blank"
@@ -439,7 +439,9 @@ export default function CredentialsPage() {
                             {short(entry.source_url, 40)}
                           </a>
                         ) : (
-                          <span className="text-muted-foreground text-xs">—</span>
+                          <span className="text-muted-foreground text-xs" title={entry.source_url}>
+                            {entry.source_url ? short(entry.source_url, 40) : "—"}
+                          </span>
                         )}
                       </TableCell>
                       <TableCell className="text-muted-foreground text-xs">{fmtTime(entry.found_at)}</TableCell>
@@ -562,14 +564,18 @@ export default function CredentialsPage() {
                 ) : null}
                 <div className="col-span-2">
                   <div className="text-muted-foreground text-xs">来源</div>
-                  <a
-                    href={detail.source_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs break-all underline-offset-2 hover:underline"
-                  >
-                    {detail.source_url || "—"}
-                  </a>
+                  {detail.source_url && !detail.source_url.startsWith("legacy://") ? (
+                    <a
+                      href={detail.source_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs break-all underline-offset-2 hover:underline"
+                    >
+                      {detail.source_url}
+                    </a>
+                  ) : (
+                    <div className="text-xs break-all">{detail.source_url || "—"}</div>
+                  )}
                 </div>
                 <div className="col-span-2">
                   <div className="text-muted-foreground text-xs">证据</div>
