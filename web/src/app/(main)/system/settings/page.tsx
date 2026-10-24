@@ -36,6 +36,13 @@ export default function SystemSettingsPage() {
   const [saving, setSaving] = React.useState(false);
   const [savingKey, setSavingKey] = React.useState(false);
   const [pyInterp, setPyInterp] = React.useState("");
+  const [fofaKeySet, setFofaKeySet] = React.useState(false);
+  const [fofaKeyInput, setFofaKeyInput] = React.useState("");
+  const [fofaBaseInput, setFofaBaseInput] = React.useState("");
+  const [fofaRate, setFofaRate] = React.useState("1.5");
+  const [savingFofaKey, setSavingFofaKey] = React.useState(false);
+  const [savingFofaBase, setSavingFofaBase] = React.useState(false);
+  const [savingFofaRate, setSavingFofaRate] = React.useState(false);
   const [workers, setWorkers] = React.useState("3");
   const [savingWorkers, setSavingWorkers] = React.useState(false);
   // 操作约束注入范围(默认都开)。
@@ -56,6 +63,9 @@ export default function SystemSettingsPage() {
     setProxyInput(s.web_search_proxy ?? "");
     setGlobalProxyInput(s.global_proxy ?? "");
     setPyInterp(s.python_interpreter ?? "");
+    setFofaKeySet(!!s.fofa_key_set);
+    setFofaBaseInput(s.fofa_base_url ?? "");
+    setFofaRate(String(s.fofa_rate_limit ?? 1.5));
     setWorkers(String(s.workers ?? 3));
     setInjectPlanner(s.constraints_inject_planner !== false);
     setInjectWorker(s.constraints_inject_worker !== false);
@@ -230,6 +240,61 @@ export default function SystemSettingsPage() {
       })
       .catch((e) => toast.error("保存失败：" + (e as Error).message))
       .finally(() => setSavingGlobalProxy(false));
+  };
+
+  const saveFofaKey = () => {
+    setSavingFofaKey(true);
+    api
+      .setSettings({ fofa_key: fofaKeyInput.trim() })
+      .then((s) => {
+        apply(s);
+        setFofaKeyInput("");
+        toast.success("已保存 FOFA API Key");
+      })
+      .catch((e) => toast.error("保存失败：" + (e as Error).message))
+      .finally(() => setSavingFofaKey(false));
+  };
+
+  const clearFofaKey = () => {
+    setSavingFofaKey(true);
+    api
+      .setSettings({ fofa_key: "" })
+      .then((s) => {
+        apply(s);
+        setFofaKeyInput("");
+        toast.success("已清除 FOFA API Key");
+      })
+      .catch((e) => toast.error("保存失败：" + (e as Error).message))
+      .finally(() => setSavingFofaKey(false));
+  };
+
+  const saveFofaBase = () => {
+    setSavingFofaBase(true);
+    api
+      .setSettings({ fofa_base_url: fofaBaseInput.trim() })
+      .then((s) => {
+        apply(s);
+        toast.success(fofaBaseInput.trim() ? "已保存 FOFA API 地址" : "已恢复默认 FOFA 地址");
+      })
+      .catch((e) => toast.error("保存失败：" + (e as Error).message))
+      .finally(() => setSavingFofaBase(false));
+  };
+
+  const saveFofaRate = () => {
+    const n = Number(fofaRate);
+    if (!Number.isFinite(n) || n < 0.1 || n > 20) {
+      toast.error("请求速率需在 0.1–20 次/秒之间");
+      return;
+    }
+    setSavingFofaRate(true);
+    api
+      .setSettings({ fofa_rate_limit: n })
+      .then((s) => {
+        apply(s);
+        toast.success("已保存 FOFA 请求速率");
+      })
+      .catch((e) => toast.error("保存失败：" + (e as Error).message))
+      .finally(() => setSavingFofaRate(false));
   };
 
   // Run a real "test" search ("test") against the CURRENT form values (backend +
@@ -615,6 +680,102 @@ export default function SystemSettingsPage() {
                 </Button>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="mb-4 break-inside-avoid md:mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <SearchIcon className="size-4" />
+              FOFA 网络空间测绘
+            </CardTitle>
+            <CardDescription>
+              FOFA API Key，供 Agent 的 <b>fofa_search / fofa_stats / fofa_host / fofa_account</b>{" "}
+              工具使用：按指纹、证书、图标、组织、端口等条件检索互联网资产，并把结果写回资产图。
+              <br />
+              Key 只保存在服务端、不会回显；修改后下一次工具调用即生效，无需重启。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="fofa-key" className="text-sm font-normal text-muted-foreground">
+                FOFA API Key
+                {fofaKeySet && <span className="ml-2 text-xs text-emerald-500">已配置</span>}
+              </Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="fofa-key"
+                  type="password"
+                  autoComplete="off"
+                  placeholder={fofaKeySet ? "已配置（留空则不变）" : "输入 FOFA API Key"}
+                  value={fofaKeyInput}
+                  disabled={!loaded || savingFofaKey}
+                  onChange={(e) => setFofaKeyInput(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  onClick={saveFofaKey}
+                  disabled={!loaded || savingFofaKey || fofaKeyInput.trim() === ""}
+                >
+                  保存
+                </Button>
+                {fofaKeySet && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={clearFofaKey}
+                    disabled={!loaded || savingFofaKey}
+                  >
+                    清除
+                  </Button>
+                )}
+              </div>
+              <p className="text-muted-foreground text-xs">
+                在 https://fofa.info/userInfo 获取。查询会消耗账号额度；工具会先查额度并在快用完时告警。
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 border-t pt-4">
+              <Label htmlFor="fofa-base" className="text-sm font-normal text-muted-foreground">
+                API 地址（可选）
+              </Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="fofa-base"
+                  autoComplete="off"
+                  placeholder="https://fofa.info（留空=官方）"
+                  value={fofaBaseInput}
+                  disabled={!loaded || savingFofaBase}
+                  onChange={(e) => setFofaBaseInput(e.target.value)}
+                />
+                <Button type="button" onClick={saveFofaBase} disabled={!loaded || savingFofaBase}>
+                  保存
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 border-t pt-4">
+              <div>
+                <Label htmlFor="fofa-rate" className="text-sm font-normal text-muted-foreground">
+                  请求速率（次/秒）
+                </Label>
+                <p className="text-muted-foreground text-xs">
+                  所有 Agent 共享。默认 1.5；调高可提速，但更容易触发 FOFA 限流（-5）。
+                </p>
+              </div>
+              <Input
+                id="fofa-rate"
+                type="number"
+                step="0.1"
+                min="0.1"
+                max="20"
+                className="w-24 shrink-0"
+                value={fofaRate}
+                disabled={!loaded || savingFofaRate}
+                onChange={(e) => setFofaRate(e.target.value)}
+                onBlur={saveFofaRate}
+              />
+            </div>
           </CardContent>
         </Card>
 

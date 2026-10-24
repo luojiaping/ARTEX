@@ -2050,5 +2050,7 @@ func (t *ToolSet) PlannerTools() []actool.CoreTool {
 		t.addTaskScope(),
 		// list_untested_assets：按需查本任务范围内未测资产(类型+分页)，自行决定补测。
 		t.listUntestedAssets(),
+		// FOFA 资产检索：规划前先摸清目标暴露面，或据结果扩展任务范围。
+		t.fofaAccount(), t.fofaSearch(), t.fofaStats(), t.fofaHost(),
 	}
 }

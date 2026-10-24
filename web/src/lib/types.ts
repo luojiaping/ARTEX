@@ -927,6 +927,12 @@ export interface Settings {
   // MITM 上游；关闭捕获时直接注入 agent 的 bash/WebFetch。空=直连。
   global_proxy?: string;
   python_interpreter?: string; // 自定义脚本工具的 python 解释器路径(空=运行时检测)
+  // FOFA 网络空间测绘。fofa_key_set 只表示是否已存 key（值永不回显）；
+  // PUT 时 fofa_key 传 null=不改、""=清空、非空=保存新值。
+  fofa_key_set?: boolean;
+  fofa_key?: string;
+  fofa_base_url?: string; // 空=官方 https://fofa.info
+  fofa_rate_limit?: number; // 全局请求速率（次/秒），默认 1.5
   workers?: number; // 并发工作 agent 数(默认3)；对之后启动的任务生效
   // 任务并发上限:同时「运行中」的任务数上限。关闭=不限;开启后新建任务超限则排队,有空位自动启动。
   task_concurrency_enabled?: boolean; // 默认 false

@@ -1,0 +1,46 @@
+# FOFA 查询清单 · 面板与代理基础设施
+# 用法：整行复制查询行（跳过 # 注释）粘贴到 FOFA 搜索框；size 为 fofa_search 单页条数建议。
+# 规模是量级估计，非实测；标「需 stats」的先跑 fofa_stats 再定 size。
+# 边界：只看登录页与版本横幅，不试默认口令、不爆破、不调用订阅/节点接口。
+
+# PX-01 x-ui 登录页（会命中教程/镜像页） | 规模 1e4 | 误报 中 | size 100
+title="x-ui"
+
+# PX-02 3x-ui（x-ui 分支，文档/GitHub 会误报） | 规模 1e3-1e4 | 误报 中 | size 100
+body="3x-ui"
+
+# PX-03 V2Board 机场前台 | 规模 1e3 | 误报 低 | size 100
+title="V2Board"
+
+# PX-04 Marzban（默认 8000） | 规模 1e2-1e3 | 误报 低 | size 50
+title="Marzban"
+
+# PX-05 Hiddify 管理端 | 规模 1e2-1e3 | 误报 低 | size 50
+title="Hiddify"
+
+# PX-06 Hiddify Manager 文案收紧 | 规模 1e2 | 误报 低 | size 50
+body="Hiddify Manager"
+
+# PX-07 v2rayA Web 管理 | 规模 1e3 | 误报 低 | size 50
+title="v2rayA"
+
+# PX-08 Clash 仪表盘（词太泛，单用误报高） | 规模 需 stats | 误报 高 | size 50
+title="Clash"
+
+# PX-09 Clash 外部控制器默认 9090 | 规模 1e3 | 误报 中 | size 50
+port="9090" && title="Clash"
+
+# PX-10 yacd（Clash 面板） | 规模 1e3 | 误报 中 | size 50
+body="yacd"
+
+# PX-11 metacubexd（Clash.Meta 面板，仓库页会误报） | 规模 1e3 | 误报 中 | size 50
+body="metacubexd"
+
+# PX-12 sing-box 相关面板/文档页（需人工确认） | 规模 需 stats | 误报 中 | size 50
+body="sing-box"
+
+# PX-13 x-ui 且页面正常，排除教程/仓库页 | 规模 需 stats | 误报 低 | size 100
+title="x-ui" && status_code="200" && type="subdomain"
+
+# PX-14 3x-ui 默认 2053 端口 | 规模 需 stats | 误报 中 | size 50
+port="2053" && body="3x-ui"

@@ -3315,20 +3315,32 @@ func (s *Server) settingsPayload() map[string]any {
 	if concLimit == 0 {
 		concLimit = defaultConcurrencyLimit // 关闭时也回显一个合理默认值给 UI
 	}
+	fofaKey, _, _ := s.m.pg.GetSetting(settingFOFAKey)
+	fofaBase, _, _ := s.m.pg.GetSetting(settingFOFABaseURL)
+	fofaRate := defaultFOFARate
+	if v, ok, _ := s.m.pg.GetSetting(settingFOFARate); ok {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil && f > 0 {
+			fofaRate = f
+		}
+	}
 	return map[string]any{
-		"traffic_capture":          s.m.TrafficEnabled(),
-		"agent_traffic_binding":    s.m.pg.GetBool(settingAgentTrafficBinding, false),
-		"llm_record":               s.m.LLMRecordEnabled(),
-		"web_search_enabled":       on,
-		"web_search_backend":       backend,
-		"brave_key_set":            strings.TrimSpace(braveKey) != "",
-		"tavily_key_set":           strings.TrimSpace(tavilyKey) != "",
-		"web_search_proxy":         proxy,                       // 独立出口代理(http/https/socks5)，空=直连
-		"global_proxy":             s.m.GlobalProxy(),           // 全局出口代理(http/https/socks5)，所有目标流量走它，空=直连
-		"python_interpreter":       strings.TrimSpace(pyStored), // 用户/自动设的值(空=用运行时检测)
-		"workers":                  s.m.Workers(),               // 并发工作 agent 数(默认3)；对之后启动的任务生效
-		"task_concurrency_enabled": concOn,                      // 任务并发上限开关(默认关)
-		"task_concurrency_limit":   concLimit,                   // 同时运行任务上限(开启后默认5)
+		"traffic_capture":       s.m.TrafficEnabled(),
+		"agent_traffic_binding": s.m.pg.GetBool(settingAgentTrafficBinding, false),
+		"llm_record":            s.m.LLMRecordEnabled(),
+		"web_search_enabled":    on,
+		"web_search_backend":    backend,
+		"brave_key_set":         strings.TrimSpace(braveKey) != "",
+		"tavily_key_set":        strings.TrimSpace(tavilyKey) != "",
+		"web_search_proxy":      proxy,                       // 独立出口代理(http/https/socks5)，空=直连
+		"global_proxy":          s.m.GlobalProxy(),           // 全局出口代理(http/https/socks5)，所有目标流量走它，空=直连
+		"python_interpreter":    strings.TrimSpace(pyStored), // 用户/自动设的值(空=用运行时检测)
+		// FOFA 网络空间测绘：key 只回显「是否已配置」，绝不回显值；base_url 留空=官方。
+		"fofa_key_set":             strings.TrimSpace(fofaKey) != "",
+		"fofa_base_url":            strings.TrimSpace(fofaBase),
+		"fofa_rate_limit":          fofaRate,
+		"workers":                  s.m.Workers(), // 并发工作 agent 数(默认3)；对之后启动的任务生效
+		"task_concurrency_enabled": concOn,        // 任务并发上限开关(默认关)
+		"task_concurrency_limit":   concLimit,     // 同时运行任务上限(开启后默认5)
 		// LLM 轮询(故障转移)。默认关；开启后走全局激活配置的 agent 在当前配置不可用时
 		// 自动切到下一个配置。bind_fallback 仅在轮询开启时有意义(默认关)。
 		"llm_pool_enabled":       s.m.LLMPoolEnabled(),
@@ -3398,7 +3410,11 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		WebSearchProxy   *string `json:"web_search_proxy"`   // 独立出口代理(http/https/socks5)；null=不改，""=清空
 		GlobalProxy      *string `json:"global_proxy"`       // 全局出口代理(http/https/socks5)；null=不改，""=清空(直连)
 		PythonInterp     *string `json:"python_interpreter"` // 自定义脚本工具的 python 解释器路径
-		Workers          *int    `json:"workers"`            // 并发工作 agent 数(>0)；对之后启动的任务生效
+		// FOFA. FOFAKey: null=不改，""=清空，非空=保存新 key。base_url 留空=官方。
+		FOFAKey     *string  `json:"fofa_key"`
+		FOFABaseURL *string  `json:"fofa_base_url"`
+		FOFARate    *float64 `json:"fofa_rate_limit"`
+		Workers     *int     `json:"workers"` // 并发工作 agent 数(>0)；对之后启动的任务生效
 		// 任务并发上限:同时「运行中」的任务数上限。关闭=不限;开启后新建任务超限则排队,有空位自动启动。
 		ConcurrencyEnabled *bool `json:"task_concurrency_enabled"`
 		ConcurrencyLimit   *int  `json:"task_concurrency_limit"`
@@ -3499,6 +3515,34 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.PythonInterp != nil {
 		if err := s.m.pg.SetSetting(settingPythonInterp, strings.TrimSpace(*req.PythonInterp)); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
+	if req.FOFAKey != nil {
+		if err := s.m.pg.SetSetting(settingFOFAKey, strings.TrimSpace(*req.FOFAKey)); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
+	if req.FOFABaseURL != nil {
+		base := strings.TrimRight(strings.TrimSpace(*req.FOFABaseURL), "/")
+		if base != "" && !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
+			writeErr(w, 400, "fofa_base_url 需以 http:// 或 https:// 开头")
+			return
+		}
+		if err := s.m.pg.SetSetting(settingFOFABaseURL, base); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
+	if req.FOFARate != nil {
+		rate := *req.FOFARate
+		if rate < 0.1 || rate > 20 {
+			writeErr(w, 400, "fofa_rate_limit 需在 0.1–20 次/秒之间")
+			return
+		}
+		if err := s.m.pg.SetSetting(settingFOFARate, strconv.FormatFloat(rate, 'f', -1, 64)); err != nil {
 			writeErr(w, 500, err.Error())
 			return
 		}

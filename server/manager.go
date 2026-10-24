@@ -285,6 +285,13 @@ const (
 	// defaultConcurrencyLimit is the simultaneous-running-task cap when the feature
 	// is enabled but no explicit limit was saved.
 	defaultConcurrencyLimit = 5
+
+	// FOFA 网络空间测绘。key 只存库、不回显；base_url 留空用官方 https://fofa.info；
+	// rate 是全局请求速率（req/s），所有 agent 共享。
+	settingFOFAKey     = "fofa_key"
+	settingFOFABaseURL = "fofa_base_url"
+	settingFOFARate    = "fofa_rate_limit"
+	defaultFOFARate    = 1.5
 )
 
 // ConcurrencyLimit returns whether the simultaneous-running-task cap is enabled and
