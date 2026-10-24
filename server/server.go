@@ -220,6 +220,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			return a.TaskTimeoutWrapupMaxTurns, true
 		}
 		wireAgentAugment(m.pg, s.skillDir, s.hostTools) // 可见 skills/MCP + 流量/编排 host 工具装配进 agent 工具集
+		agent.CredServiceProvider = m.Cred              // 凭据猎手工具共享同一份加密台账/探针
 		domainReg := buildDomainReg(m.Assets())
 		wireTools(m.pg, domainReg) // 内置工具表：按 agent 过滤 + 覆盖描述/schema + 注入默认值
 		seedPrompts(m.pg)          // 内置 agent 默认提示词正文播种进 agent_prompts(仅空时)
@@ -802,6 +803,18 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("GET /api/settings/fofa/account", s.fofaAccountInfo)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
+	// 凭据猎手台账 / 代理节点
+	mux.HandleFunc("GET /api/credentials", s.credList)
+	mux.HandleFunc("GET /api/credentials/stats", s.credStats)
+	mux.HandleFunc("GET /api/credentials/export", s.credExport)
+	mux.HandleFunc("GET /api/credentials/{uid}", s.credGet)
+	mux.HandleFunc("POST /api/credentials/verify", s.credVerifyBatch)
+	mux.HandleFunc("POST /api/credentials/{uid}/verify", s.credVerify)
+	mux.HandleFunc("POST /api/credentials/{uid}/reveal", s.credReveal)
+	mux.HandleFunc("POST /api/credentials/{uid}/archive", s.credArchive)
+	mux.HandleFunc("GET /api/proxy-nodes", s.credProxyList)
+	mux.HandleFunc("POST /api/proxy-nodes/probe", s.credProxyProbeBatch)
+	mux.HandleFunc("POST /api/proxy-nodes/{uid}/probe", s.credProxyProbe)
 	// 漏洞 IM 推送。渠道是「多实例 + 各自过滤规则」的资源，因此独立成一组
 	// REST 接口，而不是塞进扁平的 /api/settings 键值里。
 	mux.HandleFunc("GET /api/notify/meta", s.notifyMeta)

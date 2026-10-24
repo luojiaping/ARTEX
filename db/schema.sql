@@ -1401,3 +1401,88 @@ CREATE INDEX IF NOT EXISTS idx_notification_deliveries_batch
     ON notification_deliveries(batch_id) WHERE batch_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_notification_deliveries_channel
     ON notification_deliveries(channel_id, id DESC);
+
+-- =====================================================================
+-- Credential hunting ledger (credhunt)
+-- =====================================================================
+-- 扫描到的 LLM Key / OAuth 包 / 凭据 / 私钥 / 代理节点。密钥只以 AES-256-GCM
+-- 密文保存（key 在 data/credhunt.key，0600），浏览器默认只见掩码。
+CREATE TABLE IF NOT EXISTS cred_entries (
+    id              BIGSERIAL PRIMARY KEY,
+    uid             TEXT NOT NULL UNIQUE,
+    kind            TEXT NOT NULL,
+    provider        TEXT NOT NULL DEFAULT '',
+    service         TEXT NOT NULL DEFAULT '',
+    secret_enc      BYTEA NOT NULL,
+    secret_hint     TEXT NOT NULL DEFAULT '',
+    fingerprint     TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'unverified',
+    status_detail   TEXT NOT NULL DEFAULT '',
+    quota           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    risk            TEXT NOT NULL DEFAULT 'P2',
+    source_url      TEXT NOT NULL DEFAULT '',
+    evidence_path   TEXT NOT NULL DEFAULT '',
+    asset_id        BIGINT REFERENCES assets(id) ON DELETE SET NULL,
+    task_id         BIGINT,
+    conversation_id BIGINT,
+    context         TEXT NOT NULL DEFAULT '',
+    extra           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    found_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    checked_at      TIMESTAMPTZ,
+    archived        BOOLEAN NOT NULL DEFAULT false,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cred_fingerprint ON cred_entries(fingerprint) WHERE archived = false;
+CREATE INDEX IF NOT EXISTS idx_cred_kind     ON cred_entries(kind, found_at DESC) WHERE archived = false;
+CREATE INDEX IF NOT EXISTS idx_cred_provider ON cred_entries(provider, found_at DESC) WHERE archived = false;
+CREATE INDEX IF NOT EXISTS idx_cred_status   ON cred_entries(status, found_at DESC) WHERE archived = false;
+CREATE INDEX IF NOT EXISTS idx_cred_task     ON cred_entries(task_id) WHERE task_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_cred_asset    ON cred_entries(asset_id) WHERE asset_id IS NOT NULL;
+DROP TRIGGER IF EXISTS trg_cred_entries_upd ON cred_entries;
+CREATE TRIGGER trg_cred_entries_upd BEFORE UPDATE ON cred_entries
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- 同一密钥可能在多个目标/多个文件出现；主表去重，来源逐条追加。
+CREATE TABLE IF NOT EXISTS cred_sources (
+    id            BIGSERIAL PRIMARY KEY,
+    cred_id       BIGINT NOT NULL REFERENCES cred_entries(id) ON DELETE CASCADE,
+    url           TEXT NOT NULL DEFAULT '',
+    evidence_path TEXT NOT NULL DEFAULT '',
+    note          TEXT NOT NULL DEFAULT '',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cred_source ON cred_sources(cred_id, url, evidence_path);
+CREATE INDEX IF NOT EXISTS idx_cred_sources_cred ON cred_sources(cred_id);
+
+-- 代理节点探测元数据；每个节点本身也是一条 cred_entries(kind=proxy_node)。
+CREATE TABLE IF NOT EXISTS proxy_nodes (
+    id           BIGSERIAL PRIMARY KEY,
+    cred_id      BIGINT NOT NULL UNIQUE REFERENCES cred_entries(id) ON DELETE CASCADE,
+    parent_id    BIGINT REFERENCES cred_entries(id) ON DELETE SET NULL,
+    protocol     TEXT NOT NULL DEFAULT '',
+    server       TEXT NOT NULL DEFAULT '',
+    port         INTEGER NOT NULL DEFAULT 0,
+    status       TEXT NOT NULL DEFAULT 'unverified',
+    delay_ms     INTEGER NOT NULL DEFAULT 0,
+    exit_ip      TEXT NOT NULL DEFAULT '',
+    exit_country TEXT NOT NULL DEFAULT '',
+    message      TEXT NOT NULL DEFAULT '',
+    checked_at   TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_proxy_nodes_status ON proxy_nodes(status, checked_at DESC);
+CREATE INDEX IF NOT EXISTS idx_proxy_nodes_parent ON proxy_nodes(parent_id) WHERE parent_id IS NOT NULL;
+
+-- 一次批量目录扫描的审计记录。
+CREATE TABLE IF NOT EXISTS hunt_runs (
+    id              BIGSERIAL PRIMARY KEY,
+    task_id         BIGINT,
+    conversation_id BIGINT,
+    scope_note      TEXT NOT NULL DEFAULT '',
+    stage           TEXT NOT NULL DEFAULT 'scan',
+    stats           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_hunt_runs_task ON hunt_runs(task_id, started_at DESC) WHERE task_id IS NOT NULL;

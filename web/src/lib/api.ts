@@ -47,6 +47,12 @@ import type {
   FindingTraffic,
   FindingTrafficDetail,
   FofaAccount,
+  CredentialEntry,
+  CredentialList,
+  CredentialSource,
+  CredentialStats,
+  CredentialVerifyResult,
+  ProxyProbeResult,
   IntentAsset,
   InterceptApprovalFilter,
   InterceptApprovalRow,
@@ -816,6 +822,54 @@ export const api = {
   setSettings: (patch: Partial<Settings>) => put<Settings>(`/settings`, patch),
   // Live FOFA account/quota snapshot (key stays server-side).
   fofaAccount: () => get<FofaAccount>(`/settings/fofa/account`),
+
+  // ---- 凭据猎手台账 ----
+  credentials: (params?: {
+    kind?: string;
+    provider?: string;
+    status?: string;
+    q?: string;
+    task_id?: number;
+    limit?: number;
+    offset?: number;
+    archived?: boolean;
+  }) => {
+    const p = new URLSearchParams();
+    if (params?.kind) p.set("kind", params.kind);
+    if (params?.provider) p.set("provider", params.provider);
+    if (params?.status) p.set("status", params.status);
+    if (params?.q) p.set("q", params.q);
+    if (params?.task_id) p.set("task_id", String(params.task_id));
+    if (params?.limit) p.set("limit", String(params.limit));
+    if (params?.offset) p.set("offset", String(params.offset));
+    if (params?.archived) p.set("archived", "1");
+    const qs = p.toString();
+    return get<CredentialList>(`/credentials${qs ? `?${qs}` : ""}`);
+  },
+  credential: (uid: string) =>
+    get<{ entry: CredentialEntry; sources: CredentialSource[] }>(`/credentials/${encodeURIComponent(uid)}`),
+  credentialStats: () => get<CredentialStats>(`/credentials/stats`),
+  revealCredential: (uid: string) =>
+    post<{ uid: string; value: string }>(`/credentials/${encodeURIComponent(uid)}/reveal`, { confirm: true }),
+  verifyCredential: (uid: string) =>
+    post<CredentialVerifyResult>(`/credentials/${encodeURIComponent(uid)}/verify`),
+  verifyCredentials: (body: { uids?: string[]; kind?: string; provider?: string; status?: string; limit?: number }) =>
+    post<{ count: number; results: CredentialVerifyResult[] }>(`/credentials/verify`, body),
+  archiveCredential: (uid: string) =>
+    post<{ ok: boolean }>(`/credentials/${encodeURIComponent(uid)}/archive`),
+  proxyNodes: (params?: { status?: string; q?: string; limit?: number; offset?: number }) => {
+    const p = new URLSearchParams();
+    if (params?.status) p.set("status", params.status);
+    if (params?.q) p.set("q", params.q);
+    if (params?.limit) p.set("limit", String(params.limit));
+    if (params?.offset) p.set("offset", String(params.offset));
+    const qs = p.toString();
+    return get<CredentialList>(`/proxy-nodes${qs ? `?${qs}` : ""}`);
+  },
+  probeProxy: (uid: string) => post<ProxyProbeResult>(`/proxy-nodes/${encodeURIComponent(uid)}/probe`),
+  probeProxies: (body: { uids?: string[]; limit?: number }) =>
+    post<{ count: number; results: ProxyProbeResult[] }>(`/proxy-nodes/probe`, body),
+
   // Run a real "test" search with the given (or saved) config to verify it works.
   testWebSearch: (patch: {
     web_search_backend?: string;

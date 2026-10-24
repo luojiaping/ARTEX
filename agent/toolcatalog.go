@@ -46,6 +46,9 @@ func builtinToolsByAgent() map[string][]actool.CoreTool {
 		// pentest（独立渗透 agent）默认绑：查资产 / 插资产 / 报漏洞 / 查漏洞 / 查企业 / FOFA 检索。
 		// 新库由此 seed 写入；老库由 seedPentestDefaultBindings 迁移。
 		"pentest": {ts.listAssets(), ts.insertAssets(), ts.addFinding(), ts.listFindings(), ts.listCompanies(), ts.fofaAccount(), ts.fofaSearch(), ts.fofaStats(), ts.fofaHost()},
+		// credhunter（凭据猎手）默认绑凭据挖掘全套工具；这些工具不进入 worker/planner
+		// 的常规 base，只有 credhunter 或手工绑定的对话 agent 能拿到。
+		"credhunter": ts.CredTools(),
 	}
 }
 
@@ -62,7 +65,7 @@ var defaultUnbound = map[string]bool{"goal_met": true}
 // 多个 agent 都有）合成一条，Agents 取并集；defaultUnbound 里的工具则强制绑定为空。
 func BuiltinToolSeeds() []ToolSeed {
 	byAgent := builtinToolsByAgent()
-	order := []string{"mainagent", "goals", "planner", "worker", "auto", "pentest"}
+	order := []string{"mainagent", "goals", "planner", "worker", "auto", "pentest", "credhunter"}
 
 	type acc struct {
 		tool   actool.CoreTool

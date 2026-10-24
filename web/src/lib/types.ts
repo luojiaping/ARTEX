@@ -1632,3 +1632,90 @@ export interface InterceptExecution {
   seq: number;
   items: Activity[];
 }
+
+// ---- 凭据猎手（/api/credentials） ----
+export interface CredentialProxyMeta {
+  protocol: string;
+  server: string;
+  port: number;
+  status: string;
+  delay_ms?: number;
+  exit_ip?: string;
+  exit_country?: string;
+  message?: string;
+  checked_at?: string;
+}
+
+export interface CredentialEntry {
+  id: number;
+  uid: string;
+  kind: string;
+  provider: string;
+  service: string;
+  masked: string;
+  status: string;
+  status_detail: string;
+  quota?: Record<string, unknown>;
+  risk: string;
+  source_url: string;
+  evidence_path: string;
+  asset_id?: number;
+  task_id?: number;
+  conversation_id?: number;
+  context?: string;
+  extra?: Record<string, unknown>;
+  found_at: string;
+  checked_at?: string;
+  archived: boolean;
+  proxy?: CredentialProxyMeta;
+}
+
+export interface CredentialSource {
+  url: string;
+  evidence_path: string;
+  note?: string;
+  created_at: string;
+}
+
+export interface CredentialList {
+  total: number;
+  items: CredentialEntry[];
+}
+
+export interface CredentialStats {
+  total: number;
+  valid: number;
+  invalid: number;
+  unverified: number;
+  proxy_alive: number;
+  proxy_dead: number;
+  by_kind: Record<string, number>;
+  by_provider: Record<string, number>;
+  by_status: Record<string, number>;
+}
+
+export interface CredentialVerifyResult {
+  uid: string;
+  kind: string;
+  provider: string;
+  service: string;
+  status: string;
+  detail: string;
+  http_status?: number;
+  endpoint?: string;
+  model?: string;
+  elapsed_ms: number;
+  quota?: Record<string, unknown>;
+  checked_at: string;
+}
+
+export interface ProxyProbeResult {
+  uid: string;
+  protocol: string;
+  server: string;
+  port: number;
+  status: string;
+  delay_ms?: number;
+  url?: string;
+  message?: string;
+}
