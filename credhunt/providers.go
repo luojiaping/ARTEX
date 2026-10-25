@@ -185,8 +185,8 @@ func init() {
 	)
 	set("glm", "openai_chat",
 		variant("balance", "余额版（开放平台）", "https://open.bigmodel.cn/api/paas/v4", "glm-4-flash", "openai_chat", "none", ""),
-		variant("coding", "GLM Coding（国内）", "https://open.bigmodel.cn", "", "zhipu_coding", "zhipu_coding", `glm.?(coding|code)|coding.?plan`),
-		variant("coding_zai", "GLM Coding（z.ai）", "https://api.z.ai", "", "zhipu_coding", "zhipu_coding", `z\.ai`),
+		variant("coding", "GLM Coding（国内）", "https://open.bigmodel.cn/api/paas/v4", "", "zhipu_coding", "zhipu_coding", `glm.?(coding|code)|coding.?plan`),
+		variant("coding_zai", "GLM Coding（z.ai）", "https://api.z.ai/api/paas/v4", "", "zhipu_coding", "zhipu_coding", `z\.ai`),
 	)
 	set("minimax", "openai_chat",
 		variant("balance", "余额版（按量付费）", "https://api.minimaxi.com/v1", "MiniMax-Text-01", "openai_chat", "none", ""),

@@ -663,11 +663,11 @@ export default function CredentialsPage() {
                   />
                 </TableHead>
                 <TableHead className="w-20">状态</TableHead>
-                <TableHead className="w-64 xl:w-52">厂商 / 形态</TableHead>
-                <TableHead className="hidden xl:table-cell">服务 / 目标</TableHead>
-                <TableHead className="hidden w-32 xl:table-cell">掩码</TableHead>
-                <TableHead className="hidden w-28 xl:table-cell">额度</TableHead>
-                <TableHead className="hidden w-32 xl:table-cell">最近探测</TableHead>
+                <TableHead className="w-64 2xl:w-52">厂商 / 形态</TableHead>
+                <TableHead className="hidden 2xl:table-cell">服务 / 目标</TableHead>
+                <TableHead className="hidden w-32 2xl:table-cell">掩码</TableHead>
+                <TableHead className="hidden w-28 2xl:table-cell">额度</TableHead>
+                <TableHead className="hidden w-32 2xl:table-cell">最近探测</TableHead>
                 <TableHead className="w-36 text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
@@ -720,12 +720,12 @@ export default function CredentialsPage() {
                           {entry.variant_label || entry.variant ? (
                             <span className="text-muted-foreground text-[11px]">{entry.variant_label || entry.variant}</span>
                           ) : null}
-                          <span className="text-muted-foreground truncate text-[11px] xl:hidden" title={entry.service}>
+                          <span className="text-muted-foreground truncate text-[11px] 2xl:hidden" title={entry.service}>
                             {entry.service || KIND_LABEL[entry.kind] || entry.kind}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden xl:table-cell">
+                      <TableCell className="hidden 2xl:table-cell">
                         <div className="flex max-w-[22rem] flex-col">
                           <span className="truncate text-sm" title={entry.service || entry.kind}>
                             {entry.service || KIND_LABEL[entry.kind] || entry.kind}
@@ -735,10 +735,10 @@ export default function CredentialsPage() {
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden xl:table-cell">
+                      <TableCell className="hidden 2xl:table-cell">
                         <code className="text-xs">{entry.masked || "—"}</code>
                       </TableCell>
-                      <TableCell className="hidden xl:table-cell">
+                      <TableCell className="hidden 2xl:table-cell">
                         <div className="flex flex-col">
                           <span className="text-xs">{quotaText(entry)}</span>
                           {entry.quota_kind && entry.quota_kind !== "none" ? (
@@ -748,7 +748,7 @@ export default function CredentialsPage() {
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell className="text-muted-foreground hidden text-xs xl:table-cell">{fmtTime(entry.checked_at)}</TableCell>
+                      <TableCell className="text-muted-foreground hidden text-xs 2xl:table-cell">{fmtTime(entry.checked_at)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => void openDetail(entry)}>
