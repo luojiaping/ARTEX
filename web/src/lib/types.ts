@@ -1634,6 +1634,11 @@ export interface InterceptExecution {
 }
 
 // ---- 凭据猎手（/api/credentials） ----
+export interface CredentialEndpoint {
+  protocol: string;
+  base: string;
+}
+
 export interface CredentialProxyMeta {
   protocol: string;
   server: string;
@@ -1676,6 +1681,7 @@ export interface CredentialEntry {
   extra?: Record<string, unknown>;
   found_at: string;
   checked_at?: string;
+  last_probe_source?: string;
   fail_count: number;
   next_probe_at?: string;
   archived: boolean;
@@ -1718,8 +1724,10 @@ export interface CredentialVerifyResult {
   status: string;
   detail: string;
   http_status?: number;
+  protocol?: string;
   endpoint?: string;
   model?: string;
+  error_kind?: string;
   quota_kind: string;
   elapsed_ms: number;
   quota?: Record<string, unknown>;
@@ -1762,6 +1770,9 @@ export interface CredentialProviderVariant {
   model: string;
   avail: string;
   quota: string;
+  protocol?: string;
+  endpoints?: CredentialEndpoint[];
+  models?: string[];
 }
 
 export interface CredentialProvider {
@@ -1774,6 +1785,11 @@ export interface CredentialProvider {
   model: string;
   quota: string;
   avail: string;
+  preset?: string;
+  endpoints?: CredentialEndpoint[];
+  models?: string[];
+  website?: string;
+  keys_url?: string;
   variants: CredentialProviderVariant[];
 }
 
@@ -1789,6 +1805,10 @@ export interface CredentialProbe {
   pclass: string;
   provider: string;
   variant: string;
+  protocol: string;
+  endpoint: string;
+  model: string;
+  error_kind: string;
   quota_kind: string;
   quota?: Record<string, unknown>;
   source: string;

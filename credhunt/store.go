@@ -23,7 +23,8 @@ const entrySelectCols = `c.id,c.uid,c.kind,c.pclass,c.provider,c.provider_name,c
  c.source_url,c.evidence_path,COALESCE(c.asset_id,0),COALESCE(c.task_id,0),COALESCE(c.conversation_id,0),
  c.context,c.extra,c.found_at,c.checked_at,c.fail_count,c.next_probe_at,c.archived,
  COALESCE(p.protocol,''),COALESCE(p.server,''),COALESCE(p.port,0),COALESCE(p.status,''),
- COALESCE(p.delay_ms,0),COALESCE(p.exit_ip,''),COALESCE(p.exit_country,''),COALESCE(p.message,''),p.checked_at`
+ COALESCE(p.delay_ms,0),COALESCE(p.exit_ip,''),COALESCE(p.exit_country,''),COALESCE(p.message,''),p.checked_at,
+ COALESCE((SELECT source FROM cred_probes WHERE uid=c.uid ORDER BY ts DESC, id DESC LIMIT 1),'')`
 
 // NewStore opens the ledger and loads/creates its encryption key.
 func NewStore(db *pgdb.DB, keyPath string) (*Store, error) {
@@ -195,13 +196,32 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$
 }
 
 func classificationMap(c Classification) map[string]any {
-	return map[string]any{
+	out := map[string]any{
 		"provider": c.ProviderID, "provider_name": c.ProviderName, "pclass": c.PClass,
 		"variant": c.VariantID, "variant_label": c.VariantLabel, "style": c.Style,
 		"base": c.Base, "model": c.Model, "quota_kind": c.QuotaKind, "avail": c.Avail,
 		"matched_by": c.MatchedBy, "confidence": c.Confidence, "domain": c.Domain,
-		"service_family": c.ServiceFamily,
+		"service_family": c.ServiceFamily, "protocol": c.Protocol,
 	}
+	if len(c.Endpoints) > 0 {
+		out["endpoints"] = c.Endpoints
+	}
+	if len(c.Models) > 0 {
+		out["models"] = c.Models
+	}
+	if c.AuthHeader != "" {
+		out["auth"] = c.AuthHeader
+	}
+	if c.Preset != "" {
+		out["preset"] = c.Preset
+	}
+	if c.Website != "" {
+		out["website"] = c.Website
+	}
+	if c.KeysURL != "" {
+		out["keys_url"] = c.KeysURL
+	}
+	return out
 }
 
 func (s *Store) addSource(ctx context.Context, uid, sourceURL, evidence, note string) error {
@@ -303,8 +323,10 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Entry, int64, error) {
 	if f.Manual {
 		where = append(where, "c.manual_status <> ''")
 	}
-	if strings.TrimSpace(f.Status) != "" {
-		where = append(where, add("c.status = $%d", strings.TrimSpace(f.Status)))
+	if status := strings.TrimSpace(f.Status); status == "warn" {
+		where = append(where, "c.status IN ('no_balance','rate_limited')")
+	} else if status != "" {
+		where = append(where, add("c.status = $%d", status))
 	}
 	if f.TaskID > 0 {
 		where = append(where, add("c.task_id = $%d", f.TaskID))
@@ -478,10 +500,10 @@ WHERE uid=$1`, r.UID, r.Status, r.Detail, q, r.QuotaKind, r.ProviderName,
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO cred_probes(uid,ts,mode,status,http,ms,summary,pclass,provider,variant,quota_kind,quota,source)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+INSERT INTO cred_probes(uid,ts,mode,status,http,ms,summary,pclass,provider,variant,protocol,endpoint,model,error_kind,quota_kind,quota,source)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
 		r.UID, r.CheckedAt, "verify", r.Status, r.HTTPStatus, int(r.ElapsedMS), r.Detail,
-		r.PClass, r.Provider, r.Variant, r.QuotaKind, q, source)
+		r.PClass, r.Provider, r.Variant, r.Protocol, r.Endpoint, r.Model, r.ErrorKind, r.QuotaKind, q, source)
 	return err
 }
 
@@ -491,7 +513,7 @@ func (s *Store) Probes(ctx context.Context, uid string, limit int) ([]Probe, err
 		limit = 50
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id,uid,ts,mode,status,http,ms,summary,pclass,provider,variant,quota_kind,quota,source
+SELECT id,uid,ts,mode,status,http,ms,summary,pclass,provider,variant,protocol,endpoint,model,error_kind,quota_kind,quota,source
 FROM cred_probes WHERE uid=$1 ORDER BY ts DESC, id DESC LIMIT $2`, uid, limit)
 	if err != nil {
 		return nil, err
@@ -502,7 +524,8 @@ FROM cred_probes WHERE uid=$1 ORDER BY ts DESC, id DESC LIMIT $2`, uid, limit)
 		var p Probe
 		var quota []byte
 		if err := rows.Scan(&p.ID, &p.UID, &p.TS, &p.Mode, &p.Status, &p.HTTP, &p.MS, &p.Summary,
-			&p.PClass, &p.Provider, &p.Variant, &p.QuotaKind, &quota, &p.Source); err != nil {
+			&p.PClass, &p.Provider, &p.Variant, &p.Protocol, &p.Endpoint, &p.Model, &p.ErrorKind,
+			&p.QuotaKind, &quota, &p.Source); err != nil {
 			return nil, err
 		}
 		if len(quota) > 0 {
@@ -529,26 +552,66 @@ func (s *Store) SetVariant(ctx context.Context, uid, variant, baseURL string) er
 	label := variant
 	base := strings.TrimSpace(baseURL)
 	var providerID string
-	_ = s.db.QueryRowContext(ctx, `SELECT provider FROM cred_entries WHERE uid=$1`, uid).Scan(&providerID)
-	if p, ok := ProviderByID(providerID); ok {
-		for _, v := range p.Variants {
-			if v.ID == variant {
-				label = v.Label
-				if base == "" {
-					base = v.Base
-				}
-				break
+	var clsJSON, extraJSON []byte
+	if err := s.db.QueryRowContext(ctx, `SELECT provider,classification,extra FROM cred_entries WHERE uid=$1`, uid).
+		Scan(&providerID, &clsJSON, &extraJSON); err != nil {
+		return err
+	}
+	p, _ := ProviderByID(providerID)
+	var chosen Variant
+	for _, v := range p.Variants {
+		if v.ID == variant {
+			chosen = v
+			label = v.Label
+			if base == "" {
+				base = v.Base
 			}
+			break
 		}
 	}
 	if variant == "" {
 		label = ""
 	}
+	if base == "" {
+		base = p.Base
+	}
+	cls := map[string]any{}
+	_ = json.Unmarshal(clsJSON, &cls)
+	if len(chosen.Endpoints) > 0 {
+		cls["endpoints"] = chosen.Endpoints
+		cls["protocol"] = chosen.Protocol
+		cls["models"] = chosen.Models
+		if chosen.AuthHeader != "" {
+			cls["auth"] = chosen.AuthHeader
+		} else {
+			delete(cls, "auth")
+		}
+		cls["base"] = base
+	} else {
+		delete(cls, "endpoints")
+		delete(cls, "models")
+		delete(cls, "protocol")
+		delete(cls, "auth")
+		cls["base"] = base
+	}
+	clsOut, _ := json.Marshal(cls)
+	extra := map[string]any{}
+	_ = json.Unmarshal(extraJSON, &extra)
+	if strings.TrimSpace(base) != "" {
+		extra["base_url"] = base
+	} else {
+		delete(extra, "base_url")
+	}
+	extraOut, _ := json.Marshal(extra)
+	quotaKind := chosen.Quota
+	if quotaKind == "" {
+		quotaKind = defaultQuota(p)
+	}
 	_, err := s.db.ExecContext(ctx, `
 UPDATE cred_entries SET variant=$2,variant_label=$3,status='unverified',status_detail='',
- checked_at=NULL,updated_at=now(),
- extra=CASE WHEN $4='' THEN extra ELSE jsonb_set(extra,'{base_url}',to_jsonb($4::text),true) END
-WHERE uid=$1`, uid, variant, label, base)
+ checked_at=NULL,updated_at=now(),classification=$4,extra=$5,
+ quota_kind=CASE WHEN $6<>'' THEN $6 ELSE quota_kind END
+WHERE uid=$1`, uid, variant, label, clsOut, extraOut, quotaKind)
 	return err
 }
 
@@ -645,20 +708,21 @@ FROM cred_entries WHERE archived=false AND variant<>'' GROUP BY provider,variant
 // It does not change status or verified history.
 func (s *Store) Reclassify(ctx context.Context) (map[string]int, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT c.uid,c.kind,c.provider,c.service,c.source_url,c.context,c.secret_enc,COALESCE(p.protocol,'')
+SELECT c.uid,c.kind,c.provider,c.service,c.source_url,c.context,c.secret_enc,COALESCE(p.protocol,''),
+       COALESCE(c.classification->>'matched_by','')
 FROM cred_entries c LEFT JOIN proxy_nodes p ON p.cred_id=c.id
 WHERE c.archived=false`)
 	if err != nil {
 		return nil, err
 	}
 	type row struct {
-		uid, kind, provider, service, source, context, protocol string
-		enc                                                     []byte
+		uid, kind, provider, service, source, context, protocol, prevMatched string
+		enc                                                                  []byte
 	}
 	var list []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.uid, &r.kind, &r.provider, &r.service, &r.source, &r.context, &r.enc, &r.protocol); err != nil {
+		if err := rows.Scan(&r.uid, &r.kind, &r.provider, &r.service, &r.source, &r.context, &r.enc, &r.protocol, &r.prevMatched); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -683,12 +747,18 @@ WHERE c.archived=false`)
 			cls.VariantLabel = cls.Protocol
 		}
 		if cls.ProviderID == "" && r.provider != "" && r.provider != "unknown" {
-			cls.ProviderID = r.provider
-			cls.ProviderName = r.provider
-			cls.MatchedBy = "existing"
-			cls.Confidence = 0.5
-			if cls.PClass == "" {
-				cls.PClass = pclassForKind(r.kind)
+			// Keep a manual/existing verdict only when that provider still
+			// exists. Automatic verdicts from an older classifier are recomputed,
+			// not carried over: a stale regex hit must not survive forever.
+			keepExisting := true
+			if p, ok := ProviderByID(r.provider); ok && keepExisting {
+				cls.ProviderID = p.ID
+				cls.ProviderName = p.Name
+				cls.MatchedBy = firstNonEmpty(r.prevMatched, "existing")
+				cls.Confidence = 0.5
+				if cls.PClass == "" {
+					cls.PClass = pclassForKind(r.kind)
+				}
 			}
 		}
 		if cls.ProviderID == "" {
@@ -870,17 +940,18 @@ func scanEntry(sc rowScanner) (Entry, error) {
 	var quota, extra, cls []byte
 	var checked, manualAt, nextAt, proxyChecked sql.NullTime
 	var assetID, taskID, convID int64
-	var pProto, pServer, pStatus, pExitIP, pExitCountry, pMessage string
+	var pProto, pServer, pStatus, pExitIP, pExitCountry, pMessage, lastProbe string
 	var pPort, pDelay int
 	err := sc.Scan(&e.ID, &e.UID, &e.Kind, &e.PClass, &e.Provider, &e.ProviderName, &e.Variant, &e.VariantLabel,
 		&e.Service, &e.ServiceFamily, &e.Protocol, &e.Masked, &e.Status, &e.StatusDetail,
 		&quota, &e.QuotaKind, &e.Risk, &e.ManualStatus, &manualAt, &cls,
 		&e.SourceURL, &e.EvidencePath, &assetID, &taskID, &convID,
 		&e.Context, &extra, &e.FoundAt, &checked, &e.FailCount, &nextAt, &e.Archived,
-		&pProto, &pServer, &pPort, &pStatus, &pDelay, &pExitIP, &pExitCountry, &pMessage, &proxyChecked)
+		&pProto, &pServer, &pPort, &pStatus, &pDelay, &pExitIP, &pExitCountry, &pMessage, &proxyChecked, &lastProbe)
 	if err != nil {
 		return e, err
 	}
+	e.LastProbeSource = lastProbe
 	e.AssetID, e.TaskID, e.ConversationID = assetID, taskID, convID
 	if checked.Valid {
 		e.CheckedAt = &checked.Time

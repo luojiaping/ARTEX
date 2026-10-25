@@ -6,6 +6,12 @@ import (
 	"strings"
 )
 
+// Endpoint is one protocol-specific API root a provider serves.
+type Endpoint struct {
+	Protocol string `json:"protocol"` // chat|responses|anthropic|gemini
+	Base     string `json:"base"`
+}
+
 // Provider describes one LLM vendor or relay class. Base is the default API
 // root; BaseFallbacks are tried when the primary root returns 404.
 type Provider struct {
@@ -23,6 +29,16 @@ type Provider struct {
 	Prefixes      []string
 	Endpoint      string // oauth usage endpoint
 	Variants      []Variant
+	// Fine-grained preset data ported from magpie (MIT). Endpoints keeps one
+	// root per protocol; Base remains the primary/legacy root.
+	Preset     string
+	Aliases    []string
+	Hosts      []string
+	Models     []string
+	Endpoints  []Endpoint
+	AuthHeader string // "", x-api-key, bearer
+	Website    string
+	KeysURL    string
 }
 
 // Variant is a provider sub-form (balance vs coding plan, Zen vs Go, token-plan
@@ -36,26 +52,36 @@ type Variant struct {
 	Avail         string
 	Quota         string
 	Auto          *regexp.Regexp
+	Endpoints     []Endpoint
+	Models        []string
+	Protocol      string
+	AuthHeader    string
 }
 
 // Classification is the complete output of the provider classifier.
 type Classification struct {
-	ProviderID    string  `json:"provider"`
-	ProviderName  string  `json:"provider_name"`
-	PClass        string  `json:"pclass"`
-	VariantID     string  `json:"variant"`
-	VariantLabel  string  `json:"variant_label"`
-	Style         string  `json:"style"`
-	Base          string  `json:"base"`
-	BaseOverride  string  `json:"base_override,omitempty"`
-	Model         string  `json:"model"`
-	QuotaKind     string  `json:"quota_kind"`
-	Avail         string  `json:"avail"`
-	MatchedBy     string  `json:"matched_by"`
-	Confidence    float64 `json:"confidence"`
-	Domain        string  `json:"domain,omitempty"`
-	ServiceFamily string  `json:"service_family"`
-	Protocol      string  `json:"protocol,omitempty"`
+	ProviderID    string     `json:"provider"`
+	ProviderName  string     `json:"provider_name"`
+	PClass        string     `json:"pclass"`
+	VariantID     string     `json:"variant"`
+	VariantLabel  string     `json:"variant_label"`
+	Style         string     `json:"style"`
+	Base          string     `json:"base"`
+	BaseOverride  string     `json:"base_override,omitempty"`
+	Model         string     `json:"model"`
+	QuotaKind     string     `json:"quota_kind"`
+	Avail         string     `json:"avail"`
+	MatchedBy     string     `json:"matched_by"`
+	Confidence    float64    `json:"confidence"`
+	Domain        string     `json:"domain,omitempty"`
+	ServiceFamily string     `json:"service_family"`
+	Protocol      string     `json:"protocol,omitempty"`
+	Endpoints     []Endpoint `json:"endpoints,omitempty"`
+	Models        []string   `json:"models,omitempty"`
+	AuthHeader    string     `json:"auth,omitempty"`
+	Preset        string     `json:"preset,omitempty"`
+	Website       string     `json:"website,omitempty"`
+	KeysURL       string     `json:"keys_url,omitempty"`
 }
 
 var providers = []Provider{
@@ -186,7 +212,7 @@ func init() {
 	set("glm", "openai_chat",
 		variant("balance", "余额版（开放平台）", "https://open.bigmodel.cn/api/paas/v4", "glm-4-flash", "openai_chat", "none", ""),
 		variant("coding", "GLM Coding（国内）", "https://open.bigmodel.cn/api/paas/v4", "", "zhipu_coding", "zhipu_coding", `glm.?(coding|code)|coding.?plan`),
-		variant("coding_zai", "GLM Coding（z.ai）", "https://api.z.ai/api/paas/v4", "", "zhipu_coding", "zhipu_coding", `z\.ai`),
+		variant("coding_zai", "GLM Coding（z.ai）", "https://api.z.ai/api/paas/v4", "", "zhipu_coding", "zhipu_coding", `z\.ai.*(coding|code)|(coding|code).*z\.ai|glm.?coding.*z\.ai`),
 	)
 	set("minimax", "openai_chat",
 		variant("balance", "余额版（按量付费）", "https://api.minimaxi.com/v1", "MiniMax-Text-01", "openai_chat", "none", ""),
@@ -213,6 +239,7 @@ func init() {
 			providers[i].Avail = "oauth_usage"
 		}
 	}
+	mergeMagpiePresets()
 }
 
 var (
@@ -227,6 +254,11 @@ var (
 		"xf-yun.com": true, "stepfun.com": true, "baidubce.com": true,
 		"tencentcloudapi.com": true, "aliyun.com": true, "volcengine.com": true,
 		"xiaomimimo.com": true, "opencode.ai": true, "nousresearch.com": true,
+		"mistral.ai": true, "together.xyz": true, "together.ai": true, "fireworks.ai": true,
+		"aihubmix.com": true, "302.ai": true, "cherryin.ai": true, "yylx.io": true,
+		"cline.bot": true, "kilo.ai": true, "commandcode.ai": true, "ollama.com": true,
+		"pipellm.ai": true, "tencentmaas.com": true, "modelarts-maas.com": true,
+		"lkeap.cloud.tencent.com": true,
 	}
 	excludeRe     = regexp.MustCompile(`(?i)tavily|elevenlabs|\bfal\b|notion|apify|smtp|github|gitlab|aws|azure|gcp|ssh|ssl|vnc|jupyter|mysql|postgres|mariadb|wordpress|telegram|discord|feishu|dingtalk|wechat|weixin|slack|whatsapp|qq[\s_-]?bot|ilink|urlscan|fofa|shodan|zoomeye|censys|virustotal|securitytrails|leakix|binaryedge|greynoise|quake|hunter\.io|capsolver|serper|firecrawl|supabase|firebase|gmail|outlook|163\.com|qq\.com`)
 	placeholderRe = regexp.MustCompile(`(?i)^(x{3,}|your[-_ ]|changeme|change[-_ ]me|example|sample|test[-_ ]?key|dummy|placeholder|redacted|replace[-_ ]?me|<[^>]+>|\$\{[^}]+\}|\{\{[^}]+\}|\.\.\.|…)$`)
@@ -286,6 +318,12 @@ func ClassifyDetailed(kind, value, service, context, sourceURL string) Classific
 			return classificationFor(p, kind, text, "prefix", 0.97, "")
 		}
 	}
+	// A concrete API base is the strongest evidence: it names the endpoint the
+	// key is actually used at, even when the surrounding prose mentions
+	// another vendor (a Kimi agent's .env holding a DashScope key).
+	if out, ok := classifyByPreset(service+" "+context, kind); ok {
+		return out
+	}
 	// A relay/gateway with a concrete non-official base URL wins over a vendor
 	// keyword (e.g. "LongCat (Anthropic 兼容网关)").
 	if relay, ok := ProviderByID("relay"); ok && relay.Match != nil && relay.Match.MatchString(matchText) {
@@ -295,6 +333,7 @@ func ClassifyDetailed(kind, value, service, context, sourceURL string) Classific
 			out := classificationFor(relay, kind, text, "relay", 0.78, domain)
 			if base != "" {
 				out.Base, out.BaseOverride = base, base
+				decorateRelayBase(&out, base, text)
 			}
 			return out
 		}
@@ -309,6 +348,7 @@ func ClassifyDetailed(kind, value, service, context, sourceURL string) Classific
 				out := classificationFor(p, kind, text, "relay", 0.68, domain)
 				if base := extractBaseURL(context); base != "" {
 					out.Base, out.BaseOverride = base, base
+					decorateRelayBase(&out, base, text)
 				}
 				return out
 			}
@@ -325,6 +365,7 @@ func ClassifyDetailed(kind, value, service, context, sourceURL string) Classific
 			out := classificationFor(p, kind, text, "relay-domain", 0.55, d)
 			if base := extractBaseURL(context); base != "" {
 				out.Base, out.BaseOverride = base, base
+				decorateRelayBase(&out, base, text)
 			}
 			return out
 		}
@@ -350,7 +391,13 @@ func pclassForKind(kind string) string {
 func classificationFor(p Provider, kind, text, matchedBy string, confidence float64, domain string) Classification {
 	c := Classification{ProviderID: p.ID, ProviderName: p.Name, PClass: pclassForKind(kind),
 		Style: p.Style, Base: p.Base, Model: p.Model, QuotaKind: defaultQuota(p),
-		Avail: defaultAvail(p), MatchedBy: matchedBy, Confidence: confidence, ServiceFamily: p.ID}
+		Avail: defaultAvail(p), MatchedBy: matchedBy, Confidence: confidence, ServiceFamily: p.ID,
+		Preset: p.Preset, Endpoints: append([]Endpoint(nil), p.Endpoints...),
+		Models: append([]string(nil), p.Models...), AuthHeader: p.AuthHeader,
+		Website: p.Website, KeysURL: p.KeysURL}
+	if len(c.Endpoints) > 0 {
+		c.Protocol = c.Endpoints[0].Protocol
+	}
 	if p.Class == "oauth" {
 		c.PClass = "oauth"
 	}
@@ -377,8 +424,33 @@ func classificationFor(p Provider, kind, text, matchedBy string, confidence floa
 		if variant.Quota != "" {
 			c.QuotaKind = variant.Quota
 		}
+		if len(variant.Endpoints) > 0 {
+			c.Endpoints = append([]Endpoint(nil), variant.Endpoints...)
+		}
+		if len(variant.Models) > 0 {
+			c.Models = append([]string(nil), variant.Models...)
+		}
+		if variant.Protocol != "" {
+			c.Protocol = variant.Protocol
+		}
+		if variant.AuthHeader != "" {
+			c.AuthHeader = variant.AuthHeader
+		}
 	}
 	return c
+}
+
+// decorateRelayBase records the protocol and endpoint of a relay's concrete
+// base, and the one-header auth style when the context says so. LongCat's
+// Anthropic gateway is a common case: it accepts Authorization: Bearer only.
+func decorateRelayBase(c *Classification, base, text string) {
+	c.Protocol = inferProtocol(base, "relay")
+	c.Endpoints = []Endpoint{{Protocol: c.Protocol, Base: base}}
+	l := strings.ToLower(text)
+	if strings.Contains(l, "anthropic_auth_token") || strings.Contains(l, "authorization: bearer") ||
+		strings.Contains(l, "authorization=bearer") || strings.Contains(l, "authorization：bearer") {
+		c.AuthHeader = "bearer"
+	}
 }
 
 func defaultQuota(p Provider) string {
@@ -523,6 +595,11 @@ func ProviderByID(id string) (Provider, bool) {
 		if p.ID == id {
 			return p, true
 		}
+		for _, a := range p.Aliases {
+			if a == id {
+				return p, true
+			}
+		}
 	}
 	return Provider{}, false
 }
@@ -534,12 +611,14 @@ func ProviderRegistry() []map[string]any {
 		variants := make([]map[string]any, 0, len(p.Variants))
 		for _, v := range p.Variants {
 			variants = append(variants, map[string]any{"id": v.ID, "label": v.Label,
-				"base": v.Base, "model": v.Model, "avail": v.Avail, "quota": v.Quota})
+				"base": v.Base, "model": v.Model, "avail": v.Avail, "quota": v.Quota,
+				"protocol": v.Protocol, "endpoints": v.Endpoints, "models": v.Models})
 		}
 		out = append(out, map[string]any{
 			"id": p.ID, "name": p.Name, "class": p.Class, "pclass": p.Class, "style": p.Style,
 			"base": p.Base, "model": p.Model, "quota": p.Quota, "avail": defaultAvail(p),
-			"variants": variants,
+			"preset": p.Preset, "endpoints": p.Endpoints, "models": p.Models,
+			"website": p.Website, "keys_url": p.KeysURL, "variants": variants,
 		})
 	}
 	return out

@@ -63,39 +63,40 @@ type Input struct {
 
 // Entry is the model-facing/API view of a credential. Secret is never included.
 type Entry struct {
-	ID             int64          `json:"id"`
-	UID            string         `json:"uid"`
-	Kind           string         `json:"kind"`
-	PClass         string         `json:"pclass"`
-	Provider       string         `json:"provider"`
-	ProviderName   string         `json:"provider_name"`
-	Variant        string         `json:"variant"`
-	VariantLabel   string         `json:"variant_label"`
-	Service        string         `json:"service"`
-	ServiceFamily  string         `json:"service_family"`
-	Protocol       string         `json:"protocol"`
-	Masked         string         `json:"masked"`
-	Status         string         `json:"status"`
-	StatusDetail   string         `json:"status_detail"`
-	Quota          map[string]any `json:"quota,omitempty"`
-	QuotaKind      string         `json:"quota_kind"`
-	Risk           string         `json:"risk"`
-	ManualStatus   string         `json:"manual_status"`
-	ManualStatusAt *time.Time     `json:"manual_status_at,omitempty"`
-	Classification map[string]any `json:"classification,omitempty"`
-	SourceURL      string         `json:"source_url"`
-	EvidencePath   string         `json:"evidence_path"`
-	AssetID        int64          `json:"asset_id,omitempty"`
-	TaskID         int64          `json:"task_id,omitempty"`
-	ConversationID int64          `json:"conversation_id,omitempty"`
-	Context        string         `json:"context,omitempty"`
-	Extra          map[string]any `json:"extra,omitempty"`
-	FoundAt        time.Time      `json:"found_at"`
-	CheckedAt      *time.Time     `json:"checked_at,omitempty"`
-	FailCount      int            `json:"fail_count"`
-	NextProbeAt    *time.Time     `json:"next_probe_at,omitempty"`
-	Archived       bool           `json:"archived"`
-	Proxy          *ProxyMeta     `json:"proxy,omitempty"`
+	ID              int64          `json:"id"`
+	UID             string         `json:"uid"`
+	Kind            string         `json:"kind"`
+	PClass          string         `json:"pclass"`
+	Provider        string         `json:"provider"`
+	ProviderName    string         `json:"provider_name"`
+	Variant         string         `json:"variant"`
+	VariantLabel    string         `json:"variant_label"`
+	Service         string         `json:"service"`
+	ServiceFamily   string         `json:"service_family"`
+	Protocol        string         `json:"protocol"`
+	Masked          string         `json:"masked"`
+	Status          string         `json:"status"`
+	StatusDetail    string         `json:"status_detail"`
+	Quota           map[string]any `json:"quota,omitempty"`
+	QuotaKind       string         `json:"quota_kind"`
+	Risk            string         `json:"risk"`
+	ManualStatus    string         `json:"manual_status"`
+	ManualStatusAt  *time.Time     `json:"manual_status_at,omitempty"`
+	Classification  map[string]any `json:"classification,omitempty"`
+	SourceURL       string         `json:"source_url"`
+	EvidencePath    string         `json:"evidence_path"`
+	AssetID         int64          `json:"asset_id,omitempty"`
+	TaskID          int64          `json:"task_id,omitempty"`
+	ConversationID  int64          `json:"conversation_id,omitempty"`
+	Context         string         `json:"context,omitempty"`
+	Extra           map[string]any `json:"extra,omitempty"`
+	FoundAt         time.Time      `json:"found_at"`
+	CheckedAt       *time.Time     `json:"checked_at,omitempty"`
+	LastProbeSource string         `json:"last_probe_source,omitempty"`
+	FailCount       int            `json:"fail_count"`
+	NextProbeAt     *time.Time     `json:"next_probe_at,omitempty"`
+	Archived        bool           `json:"archived"`
+	Proxy           *ProxyMeta     `json:"proxy,omitempty"`
 }
 
 // ProxyMeta is the probe-facing metadata for a proxy_node entry.
@@ -216,6 +217,10 @@ type Probe struct {
 	PClass    string         `json:"pclass"`
 	Provider  string         `json:"provider"`
 	Variant   string         `json:"variant"`
+	Protocol  string         `json:"protocol"`
+	Endpoint  string         `json:"endpoint"`
+	Model     string         `json:"model"`
+	ErrorKind string         `json:"error_kind"`
 	QuotaKind string         `json:"quota_kind"`
 	Quota     map[string]any `json:"quota,omitempty"`
 	Source    string         `json:"source"`
@@ -234,8 +239,10 @@ type VerifyResult struct {
 	Status       string         `json:"status"`
 	Detail       string         `json:"detail"`
 	HTTPStatus   int            `json:"http_status,omitempty"`
+	Protocol     string         `json:"protocol,omitempty"`
 	Endpoint     string         `json:"endpoint,omitempty"`
 	Model        string         `json:"model,omitempty"`
+	ErrorKind    string         `json:"error_kind,omitempty"`
 	QuotaKind    string         `json:"quota_kind"`
 	ElapsedMS    int64          `json:"elapsed_ms"`
 	Quota        map[string]any `json:"quota,omitempty"`

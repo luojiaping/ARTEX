@@ -1438,10 +1438,19 @@ CREATE TABLE IF NOT EXISTS cred_probes (
     pclass      TEXT NOT NULL DEFAULT '',
     provider    TEXT NOT NULL DEFAULT '',
     variant     TEXT NOT NULL DEFAULT '',
+    protocol    TEXT NOT NULL DEFAULT '',
+    endpoint    TEXT NOT NULL DEFAULT '',
+    model       TEXT NOT NULL DEFAULT '',
+    error_kind  TEXT NOT NULL DEFAULT '',
     quota_kind  TEXT NOT NULL DEFAULT '',
     quota       JSONB NOT NULL DEFAULT '{}'::jsonb,
     source      TEXT NOT NULL DEFAULT 'verify'
 );
+-- 兼容上一版 cred_probes（探测协议/入口/模型/错误类型）。
+ALTER TABLE cred_probes ADD COLUMN IF NOT EXISTS protocol   TEXT NOT NULL DEFAULT '';
+ALTER TABLE cred_probes ADD COLUMN IF NOT EXISTS endpoint   TEXT NOT NULL DEFAULT '';
+ALTER TABLE cred_probes ADD COLUMN IF NOT EXISTS model      TEXT NOT NULL DEFAULT '';
+ALTER TABLE cred_probes ADD COLUMN IF NOT EXISTS error_kind TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_cred_probes_uid ON cred_probes(uid, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_cred_probes_ts  ON cred_probes(ts DESC);
 

@@ -25,6 +25,56 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+func TestMagpiePresetCoverage(t *testing.T) {
+	t.Logf("provider registry has %d entries", len(providers))
+	for _, id := range []string{"openai", "mistral", "together", "fireworks", "modelscope", "aihubmix",
+		"302ai", "cherryin", "commandcode", "clinepass", "kilo", "baidu", "tencent", "huawei", "ollama"} {
+		if _, ok := ProviderByID(id); !ok {
+			t.Errorf("provider %q was not merged from magpie presets", id)
+		}
+	}
+	// Existing ids stay canonical.
+	for _, id := range []string{"deepseek", "kimi", "glm", "dashscope", "ark", "mimo", "opencode", "lkeap"} {
+		if _, ok := ProviderByID(id); !ok {
+			t.Errorf("canonical provider %q disappeared", id)
+		}
+	}
+}
+
+func TestClassifyMagpieHosts(t *testing.T) {
+	cases := []struct {
+		name, kind, service, context string
+		wantProvider, wantVariant    string
+	}{
+		{"tencent-tokenhub", KindLLMKey, "Tencent TokenHub", "BASE_URL=https://tokenhub.tencentmaas.com/v1", "tencent", "cn"},
+		{"aihubmix", KindLLMKey, "AiHubMix", "OPENAI_BASE_URL=https://aihubmix.com/v1", "aihubmix", ""},
+		{"kimi-code", KindLLMKey, "Kimi Code", "ANTHROPIC_BASE_URL=https://api.kimi.com/coding", "kimi", "coding"},
+		{"mistral", KindLLMKey, "Mistral", "MISTRAL_BASE_URL=https://api.mistral.ai/v1", "mistral", ""},
+		{"zai-coding", KindLLMKey, "Z.ai Coding", "OPENAI_BASE_URL=https://api.z.ai/api/coding/paas/v4", "glm", "coding_zai"},
+		{"zai-coding-anthropic", KindLLMKey, "Z.ai Coding", "ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic", "glm", "coding_zai"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := ClassifyDetailed(tc.kind, "sk-1234567890", tc.service, tc.context, "https://x.test/.env")
+			if c.ProviderID != tc.wantProvider || c.VariantID != tc.wantVariant {
+				t.Fatalf("classification = %+v, want %s/%s", c, tc.wantProvider, tc.wantVariant)
+			}
+		})
+	}
+}
+
+func TestClassifyRelayAnthropicBearer(t *testing.T) {
+	c := ClassifyDetailed(KindLLMKey, "ak-test", "LongCat (Anthropic 兼容网关)",
+		"ANTHROPIC_AUTH_TOKEN=ak-test\nANTHROPIC_BASE_URL=https://api.longcat.chat/anthropic；Authorization: Bearer",
+		"https://x.test/.env")
+	if c.ProviderID != "relay" || c.Protocol != ProtoAnthropic || c.AuthHeader != "bearer" {
+		t.Fatalf("classification = %+v", c)
+	}
+	if len(c.Endpoints) != 1 || c.Endpoints[0].Base != "https://api.longcat.chat/anthropic" {
+		t.Fatalf("endpoints = %#v", c.Endpoints)
+	}
+}
+
 func TestLooksLikePlaceholder(t *testing.T) {
 	for _, v := range []string{"", "xxxxxx", "your-api-key", "changeme", "<token>", "${KEY}", "aaaaaaa"} {
 		if !LooksLikePlaceholder(v) {

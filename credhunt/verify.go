@@ -16,13 +16,23 @@ import (
 type Verifier struct {
 	store  *Store
 	client *http.Client
+
+	modelMu    sync.Mutex
+	modelCache map[string]modelCacheEntry
 }
 
 // NewVerifier builds a verifier with a direct (non-proxy) HTTP client. The
 // server's TUN/mihomo handles egress at the OS level.
 func NewVerifier(store *Store) *Verifier {
-	return &Verifier{store: store, client: &http.Client{Timeout: 12 * time.Second,
-		Transport: &http.Transport{Proxy: nil, TLSHandshakeTimeout: 8 * time.Second}}}
+	return &Verifier{store: store, client: &http.Client{Timeout: 20 * time.Second,
+		Transport: &http.Transport{Proxy: nil, TLSHandshakeTimeout: 8 * time.Second}},
+		modelCache: map[string]modelCacheEntry{}}
+}
+
+// CheckOne probes one entry without writing a verdict or probe history. It is
+// used by the dry-run command to compare the new probe engine on real keys.
+func (v *Verifier) CheckOne(ctx context.Context, e Entry, secret string) VerifyResult {
+	return v.verifyOne(ctx, e, secret)
 }
 
 // Verify checks entries concurrently and persists each verdict.
@@ -59,7 +69,6 @@ func (v *Verifier) verifyOne(ctx context.Context, e Entry, secret string) (res V
 		res.Detail = "unknown provider and no base_url"
 		return res
 	}
-	base := provider.Base
 	res.Model = provider.Model
 	res.QuotaKind = defaultQuota(provider)
 	if res.PClass == "" {
@@ -67,10 +76,6 @@ func (v *Verifier) verifyOne(ctx context.Context, e Entry, secret string) (res V
 	}
 	if res.ProviderName == "" {
 		res.ProviderName = provider.Name
-	}
-	if base == "" {
-		res.Detail = "provider has no API base"
-		return res
 	}
 
 	if provider.Style == "oauth" {
@@ -86,43 +91,50 @@ func (v *Verifier) verifyOne(ctx context.Context, e Entry, secret string) (res V
 		return res
 	}
 
-	bases := append([]string{base}, provider.BaseFallbacks...)
-	var lastDetail string
-	for _, b := range bases {
-		status, detail, httpStatus, endpoint, valid := v.tryModels(ctx, provider, b, secret)
-		if status != "" {
-			res.Status, res.Detail, res.HTTPStatus, res.Endpoint = status, detail, httpStatus, endpoint
-			if valid {
-				res.Quota = v.fetchQuota(ctx, provider, b, secret)
-				return res
-			}
-			if status == StatusInvalid || status == StatusNoBalance || status == StatusRateLimited {
-				return res
-			}
-			lastDetail = detail
-			continue
+	targets := v.probeTargets(e, provider)
+	if len(targets) == 0 {
+		res.Status, res.Detail = StatusUnsupported, "provider has no usable endpoint"
+		return res
+	}
+	var last ProbeOutcome
+	for _, target := range targets {
+		out := v.probeTarget(ctx, target, secret)
+		res.Protocol, res.Model = out.Protocol, out.Model
+		res.HTTPStatus, res.Endpoint, res.ErrorKind = out.HTTPStatus, out.Endpoint, out.ErrorType
+		if target.QuotaKind != "" && target.QuotaKind != "none" {
+			res.QuotaKind = target.QuotaKind
 		}
-		// models endpoint unavailable → minimal chat
-		status, detail, httpStatus, endpoint, valid = v.tryChat(ctx, provider, b, secret)
-		if status != "" {
-			res.Status, res.Detail, res.HTTPStatus, res.Endpoint = status, detail, httpStatus, endpoint
-			if valid {
-				res.Quota = v.fetchQuota(ctx, provider, b, secret)
-				return res
-			}
-			if status == StatusInvalid || status == StatusNoBalance || status == StatusRateLimited {
-				return res
-			}
-			lastDetail = detail
+		if out.QuotaKind != "" && out.QuotaKind != "none" {
+			res.QuotaKind = out.QuotaKind
+		}
+		quotaTarget := target
+		if out.QuotaKind != "" {
+			quotaTarget.QuotaKind = out.QuotaKind
+		}
+		switch out.Kind {
+		case "valid":
+			res.Status, res.Detail = StatusValid, out.Detail
+			res.Quota = v.fetchQuotaForTarget(ctx, quotaTarget, secret)
+			return res
+		case "no_balance", "rate_limited":
+			res.Status, res.Detail = out.Kind, out.Detail
+			res.Quota = v.fetchQuotaForTarget(ctx, quotaTarget, secret)
+			return res
+		case "invalid":
+			res.Status, res.Detail = out.Kind, out.Detail
+			return res
+		default:
+			last = out
 		}
 	}
-	if lastDetail == "" {
-		lastDetail = "no usable endpoint"
+	if last.Detail == "" {
+		last.Detail = "no usable endpoint"
 	}
-	if res.Status == StatusUnsupported {
-		res.Status = StatusUnknown
+	res.Status = StatusUnknown
+	if last.Kind == "endpoint_missing" {
+		res.Status = StatusUnsupported
 	}
-	res.Detail = lastDetail
+	res.Detail = last.Detail
 	return res
 }
 

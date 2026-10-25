@@ -1,0 +1,12 @@
+Provider icons
+==============
+
+These SVG files are copied from the magpie project's
+`internal/gui/assets/icons` directory:
+
+  https://github.com/yetone/magpie
+
+magpie is MIT licensed, Copyright (c) 2026 yetone. The icons themselves are
+gathered by magpie from simple-icons (CC0-1.0) and @lobehub/icons-static-svg
+(MIT); trademarks belong to their respective vendors. They are used here only
+to identify the provider a credential belongs to.
