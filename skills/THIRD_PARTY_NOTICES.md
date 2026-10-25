@@ -23,6 +23,10 @@ to unresolved placeholders or destructive examples.
   `saml-sso-assertion-attacks`, `request-smuggling`, `websocket-security`,
   `race-condition`, `business-logic-vulnerabilities`,
   `authbypass-authentication-flaws`.
+- Two optional companion files (`ssti-server-side-template-injection/
+  SCENARIOS.md` and `upload-insecure-files/SCENARIOS.md`) could not be imported:
+  the workstation antivirus blocked them as offensive payload corpora. The main
+  skills state that those extended scenarios are not shipped.
 
 ## Pa55w0rd/secknowledge-skill
 
