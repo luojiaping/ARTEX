@@ -3,8 +3,8 @@ name: cors-cross-origin-misconfiguration
 description: >-
   CORS misconfiguration testing playbook. Use when analyzing cross-origin
   trust, credentialed browser reads, origin reflection, preflight policy bugs,
-  and browser-based access to authenticated APIs. ??? CORS ??????????
-  allowlist ???????????
+  and browser-based access to authenticated APIs. 适用于 CORS 反射、凭据跨域读取与
+  allowlist 绕过验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**
@@ -57,7 +57,7 @@ Load when:
 
 - Session or JSON action abuse: [csrf cross site request forgery](../csrf-cross-site-request-forgery/SKILL.md)
 - OAuth token leakage and callback binding: [oauth oidc misconfiguration](../oauth-oidc-misconfiguration/SKILL.md)
-- API auth context: api auth and jwt abuse?????
+- API auth context: api auth and jwt abuse（未安装）
 
 ---
 

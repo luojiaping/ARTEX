@@ -3,7 +3,7 @@ name: cmdi-command-injection
 description: >-
   Command injection playbook. Use when user input may reach shell commands,
   process execution, converters, import pipelines, or blind out-of-band
-  command sinks. ???????????????????????????
+  command sinks. 适用于命令注入入口判断与最小命令执行证明（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

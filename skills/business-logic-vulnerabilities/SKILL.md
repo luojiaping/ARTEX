@@ -3,7 +3,7 @@ name: business-logic-vulnerabilities
 description: >-
   Business logic vulnerability playbook. Use when reasoning about workflows,
   race conditions, price manipulation, coupon abuse, state machines, and
-  multi-step authorization gaps. ????????????????????????????????
+  multi-step authorization gaps. 适用于价格、优惠券、库存、状态机与多步流程缺陷分析（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

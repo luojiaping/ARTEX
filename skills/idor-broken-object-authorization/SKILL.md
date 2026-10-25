@@ -3,7 +3,7 @@ name: idor-broken-object-authorization
 description: >-
   IDOR and broken object authorization testing playbook. Use when requests
   expose object identifiers, tenant boundaries, writable fields, or missing
-  object-level authorization checks. ??? IDOR/BOLA/BFLA ??????????????????
+  object-level authorization checks. 适用于 IDOR/BOLA/BFLA 对象级与功能级越权验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

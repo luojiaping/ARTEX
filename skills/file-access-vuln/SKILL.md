@@ -4,7 +4,7 @@ description: >-
   Entry P1 category router for file access and upload workflows. Use when
   testing download endpoints, file paths, local file inclusion, upload flows,
   preview pipelines, archive extraction, or storage and sharing boundaries.
-  ?????????????/LFI ??????
+  文件访问分类路由：路径遍历/LFI 与文件上传。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

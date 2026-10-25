@@ -3,8 +3,8 @@ name: injection-checking
 description: >-
   Entry P1 category router for injection testing. Use when routing between
   XSS, SQLi, SSRF, XXE, SSTI, command injection, and NoSQL injection workflows
-  based on how attacker-controlled input is consumed. ?????????????????
-  SQLi/XSS/SSRF/XXE/SSTI/CMDi/NoSQL?
+  based on how attacker-controlled input is consumed. 注入分类路由：按输入最终汇聚点选择
+  SQLi/XSS/SSRF/XXE/SSTI/CMDi/NoSQL。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

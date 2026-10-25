@@ -3,8 +3,8 @@ name: saml-sso-assertion-attacks
 description: >-
   SAML SSO assertion attack playbook. Use when testing signature validation,
   assertion wrapping, audience restrictions, ACS handling, XML trust
-  boundaries, and enterprise SSO flaws. ??? SAML ?????audience?ACS
-  ????????????
+  boundaries, and enterprise SSO flaws. 适用于 SAML 断言签名、audience、ACS
+  与重放验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

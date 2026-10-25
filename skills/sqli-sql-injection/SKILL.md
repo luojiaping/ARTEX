@@ -3,7 +3,7 @@ name: sqli-sql-injection
 description: >-
   SQL injection playbook. Use when input reaches SQL queries, authentication
   logic, sorting, filtering, reporting, or DB-specific blind and out-of-band
-  execution paths. ??? SQL ??????????????????
+  execution paths. 适用于 SQL 注入验证与利用路径分析（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**
@@ -18,7 +18,7 @@ description: >-
 
 ## 0. RELATED ROUTING
 
-- ghost-bits-cast-attack????? when the backend is **Java with Jackson** and your SQL keywords are WAF-blocked — Jackson's `charToHex` table is indexed by `ch & 0xFF`, so a Unicode character like `丰` (U+4E30) resolves to hex digit `0` inside a `\uXXXX` escape sequence, letting you smuggle `UNION`, `SELECT`, `1`, etc. without the WAF ever seeing them
+- ghost-bits-cast-attack（未安装） when the backend is **Java with Jackson** and your SQL keywords are WAF-blocked — Jackson's `charToHex` table is indexed by `ch & 0xFF`, so a Unicode character like `丰` (U+4E30) resolves to hex digit `0` inside a `\uXXXX` escape sequence, letting you smuggle `UNION`, `SELECT`, `1`, etc. without the WAF ever seeing them
 
 ## 1. QUICK START
 

@@ -3,7 +3,7 @@ name: jwt-oauth-token-attacks
 description: >-
   JWT and OAuth token attack playbook. Use when validating token trust,
   signing algorithms, key handling, claim abuse, bearer flows, and OAuth
-  account-binding weaknesses. ??? JWT/OAuth ???????????????????????
+  account-binding weaknesses. 适用于 JWT/OAuth 令牌信任、算法混淆与声明篡改验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

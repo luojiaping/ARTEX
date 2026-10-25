@@ -4,8 +4,8 @@ description: >-
   HTTP request smuggling and desynchronization testing. Use when front
   proxies, CDNs, or load balancers disagree with the origin on message framing
   (Content-Length vs Transfer-Encoding), on HTTP/2→HTTP/1 translation, or when
-  exploring client-side desync via browser fetch pipelines. ??? CL/TE?HTTP/2
-  ?????? desync ?????????
+  exploring client-side desync via browser fetch pipelines. 适用于 CL/TE、HTTP/2
+  降级与客户端 desync 验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**
@@ -23,7 +23,7 @@ Routing note: load this skill when you suspect CDN/reverse-proxy and origin disa
 
 ## 0. RELATED ROUTING
 
-- ghost-bits-cast-attack????? when the HTTP client library is **Apache HttpClient <= 4.5.9** (HTTPCLIENT-1974/1978) — injecting `瘍瘊` (U+760D U+760A, low bytes `\r\n`) into a header value causes the underlying char-to-byte writer to emit a literal CRLF, splitting the request at the origin without relying on CL/TE disagreement
+- ghost-bits-cast-attack（未安装） when the HTTP client library is **Apache HttpClient <= 4.5.9** (HTTPCLIENT-1974/1978) — injecting `瘍瘊` (U+760D U+760A, low bytes `\r\n`) into a header value causes the underlying char-to-byte writer to emit a literal CRLF, splitting the request at the origin without relying on CL/TE disagreement
 
 ## 1. QUICK START
 
@@ -316,7 +316,7 @@ Also load [H2_SMUGGLING_VARIANTS.md](./H2_SMUGGLING_VARIANTS.md) when you need:
 ## 12. RELATED ROUTING
 
 - **Input enters interpreter/query language/template** (not HTTP framing) -> [Injection Testing Router](../injection-checking/SKILL.md) (then drill down into XSS, SQLi, SSTI, etc.).
-- **Response header splitting / Location CRLF** -> CRLF Injection?????.
-- **Cache and path-key confusion** -> Web Cache Deception?????.
+- **Response header splitting / Location CRLF** -> CRLF Injection（未安装）.
+- **Cache and path-key confusion** -> Web Cache Deception（未安装）.
 
 Once confirmed as an **HTTP message-boundary** issue rather than parameter injection, **stay in this skill** to avoid misrouting into general injection workflows.

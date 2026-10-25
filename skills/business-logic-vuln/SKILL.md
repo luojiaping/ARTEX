@@ -3,7 +3,7 @@ name: business-logic-vuln
 description: >-
   Entry P1 category router for business logic testing. Use when workflow
   abuse, race conditions, pricing flaws, or multi-step state attacks matter
-  more than parser-level input injection. ??????????????????????
+  more than parser-level input injection. 业务逻辑分类路由：流程、竞态、价格与状态机。
 ---
 
 > **ARTEX 使用边界（优先于下文）**
@@ -34,6 +34,6 @@ This is the routing entry point for business-logic and state-machine issues.
 
 ## Related Categories
 
-- api-sec?????
+- api-sec（未安装）
 - [auth-sec](../auth-sec/SKILL.md)
 - [file-access-vuln](../file-access-vuln/SKILL.md)

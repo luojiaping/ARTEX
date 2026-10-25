@@ -3,8 +3,8 @@ name: oauth-oidc-misconfiguration
 description: >-
   OAuth and OIDC misconfiguration testing playbook. Use when reviewing
   redirect URI handling, state and nonce validation, PKCE, token audience,
-  callback binding, and identity-provider trust flaws. ??? OAuth/OIDC
-  redirect_uri?state?PKCE?nonce ???????????
+  callback binding, and identity-provider trust flaws. 适用于 OAuth/OIDC
+  redirect_uri、state、PKCE、nonce 配置核查（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

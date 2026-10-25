@@ -4,7 +4,7 @@ description: >-
   Race condition and TOCTOU testing for web apps. Use when testing one-time
   operations, concurrent HTTP abuse, rate-limit bypass, Turbo Intruder gates,
   HTTP/2 single-packet attacks, and CWE-362-style synchronization gaps.
-  ?????/TOCTOU????????????????????
+  适用于并发/TOCTOU、一次性操作与限速绕过验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

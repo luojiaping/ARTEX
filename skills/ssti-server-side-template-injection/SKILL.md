@@ -3,7 +3,7 @@ name: ssti-server-side-template-injection
 description: >-
   SSTI playbook. Use when template expressions, server-side rendering, preview
   features, or templating engines may evaluate attacker-controlled content.
-  ??? SSTI ??????????????????
+  适用于 SSTI 引擎识别与沙箱逃逸验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**
@@ -14,18 +14,18 @@ description: >-
 
 # SKILL: Server-Side Template Injection (SSTI) — Expert Attack Playbook
 
-> **AI LOAD INSTRUCTION**: Expert SSTI techniques. Covers polyglot detection probes, engine fingerprinting, Jinja2/FreeMarker/Twig/ERB RCE chains, client-side Angular SSTI, and bypass techniques. Base models often miss sandbox escape MRO chains and non-Jinja2 engines. For PHP CMS template eval, Jira SSTI, Confluence OGNL, and Spring Cloud Gateway SpEL, load the companion [SCENARIOS.md](./SCENARIOS.md).
+> **AI LOAD INSTRUCTION**: Expert SSTI techniques. Covers polyglot detection probes, engine fingerprinting, Jinja2/FreeMarker/Twig/ERB RCE chains, client-side Angular SSTI, and bypass techniques. Base models often miss sandbox escape MRO chains and non-Jinja2 engines. PHP CMS template eval、Jira SSTI、Confluence OGNL、Spring Cloud Gateway SpEL 等扩展场景未随包导入。
 
 ## 0. RELATED ROUTING
 
 Before using full engine-specific exploitation, you can first load:
 
 - First use the polyglot probe sequence at the top of this file for low-noise fingerprinting
-- expression-language-injection????? when `${7*7}` or `%{7*7}` resolves in Java (SpEL/OGNL) — different attack surface from template engines
+- expression-language-injection（未安装；如遇 Java EL/SpEL/OGNL，按通用方法验证）— when `${7*7}` or `%{7*7}` resolves in Java (SpEL/OGNL), it is a different attack surface from template engines
 
 ### Extended Scenarios
 
-Also load [SCENARIOS.md](./SCENARIOS.md) when you need:
+以下扩展场景未随包导入（终端安全软件拦截）；仅作为关键词提示，不要尝试读取本地 SCENARIOS.md：
 - Maccms 8.x PHP template `eval` — `{if-A:phpinfo()}{endif-A}` in `vod-search`, base64 bypass for webshell write
 - Jira CVE-2019-11581 — "Contact Administrators" form → Velocity template injection → command output in admin email
 - Spring Cloud Gateway SpEL (CVE-2022-22947) — actuator route injection with `StreamUtils.copyToByteArray` for output capture
@@ -34,7 +34,7 @@ Also load [SCENARIOS.md](./SCENARIOS.md) when you need:
 - SSTI vs EL injection disambiguation guide
 - Additional template engines: ASP.NET Razor, Elixir EEx, PHP Smarty/Latte/Blade, JS Pug/Handlebars/Nunjucks/EJS/Lodash + universal detection + blind SSTI + Flask PIN calculation
 
-**SCENARIOS.md reference (§7–§11):** For expanded payloads and engine-specific notes on Razor, EEx/LEEx/HEEx, PHP stacks, JavaScript template engines, the universal polyglot probe, mathematical fingerprinting, blind SSTI (boolean / time / OOB), and Flask debug PIN prerequisites, see [SCENARIOS.md](./SCENARIOS.md). This skill keeps a short checklist in §13–§15.
+**扩展场景（未随包导入）**：Razor、EEx/LEEx/HEEx、PHP/JS 模板引擎、通用 polyglot、数学指纹、盲 SSTI、Flask debug PIN 等内容未随包导入；本 skill 保留 §13–§15 的速查。
 
 ### Engine Payloads Reference
 
@@ -42,7 +42,7 @@ For extended engine-specific fingerprinting, payload matrices (Jinja2, Twig, Fre
 
 ### Universal detection & blind SSTI (pointer)
 
-Use the polyglot payload and math probes in §1 and §13 first; when you need fuller blind-test patterns and per-engine examples (including non-Python stacks), follow [SCENARIOS.md](./SCENARIOS.md) §11 and cross-check §14 here for technique names (boolean, time, OOB, error-based).
+Use the polyglot payload and math probes in §1 and §13 first; when you need fuller blind-test patterns and per-engine examples (including non-Python stacks), use the technique names in §14 here (boolean, time, OOB, error-based).
 
 ---
 

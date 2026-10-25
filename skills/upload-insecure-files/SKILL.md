@@ -3,7 +3,7 @@ name: upload-insecure-files
 description: >-
   Insecure file upload playbook. Use when testing upload validation, storage
   paths, processing pipelines, preview behavior, overwrite risks, and upload-
-  to-RCE chains. ??????????????????????????????
+  to-RCE chains. 适用于文件上传校验、存储、处理链与解析绕过验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**
@@ -15,13 +15,13 @@ description: >-
 
 # SKILL: Upload Insecure Files — Validation Bypass, Storage Abuse, and Processing Chains
 
-> **AI LOAD INSTRUCTION**: Expert file upload attack playbook. Use when the target accepts files, imports, avatars, media, documents, or archives and you need the full workflow: validation bypass, storage path abuse, post-upload access, parser exploitation, multi-tenant overwrite, and chaining into XSS, XXE, CMDi, traversal, or business logic impact. For web server parsing vulnerabilities, PUT method exploitation, and specific CVEs (WebLogic, Flink, Tomcat), load the companion [SCENARIOS.md](./SCENARIOS.md).
+> **AI LOAD INSTRUCTION**: Expert file upload attack playbook. Use when the target accepts files, imports, avatars, media, documents, or archives and you need the full workflow: validation bypass, storage path abuse, post-upload access, parser exploitation, multi-tenant overwrite, and chaining into XSS, XXE, CMDi, traversal, or business logic impact. Web 服务器解析、PUT 方法利用、WebLogic/Flink/Tomcat 等 CVE 扩展场景未随包导入。
 
 ## 0. RELATED ROUTING
 
 ### Extended Scenarios
 
-Also load [SCENARIOS.md](./SCENARIOS.md) when you need:
+以下扩展场景未随包导入（终端安全软件拦截）；仅作为关键词提示，不要尝试读取本地 SCENARIOS.md：
 - IIS parsing vulnerabilities — `x.asp/` directory parsing, `;` semicolon truncation (`shell.asp;.jpg`)
 - Nginx parsing misconfiguration — `avatar.jpg/.php` with `cgi.fix_pathinfo=1`
 - Apache parsing — multiple extensions, `AddHandler`, CVE-2017-15715 `\n` (0x0A) bypass
@@ -38,7 +38,7 @@ Use this file as the deep upload workflow reference. Also load:
 - [xxe xml external entity](../xxe-xml-external-entity/SKILL.md) when SVG, OOXML, or XML imports are accepted
 - [cmdi command injection](../cmdi-command-injection/SKILL.md) when a processor, converter, or media pipeline executes system tools
 - [business logic vulnerabilities](../business-logic-vulnerabilities/SKILL.md) when quotas, overwrite rules, approvals, or storage paths create logic bugs
-- ghost-bits-cast-attack????? when the server is **Apache Tomcat** and the WAF blocks `.jsp` in `filename*` — Tomcat's `RFC2231Utility` narrows each char to byte, so `1.陪sp` (U+966A low byte = `j`) writes `1.jsp` to disk while the WAF sees no `.jsp` literal
+- ghost-bits-cast-attack（未安装；如遇 Tomcat WAF 拦截，按通用方法验证）— when the server is **Apache Tomcat** and the WAF blocks `.jsp` in `filename*`, Tomcat's `RFC2231Utility` narrows each char to byte, so `1.陪sp` (U+966A low byte = `j`) writes `1.jsp` to disk while the WAF sees no `.jsp` literal
 
 ---
 

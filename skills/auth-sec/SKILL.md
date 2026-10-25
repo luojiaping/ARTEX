@@ -4,7 +4,7 @@ description: >-
   Entry P1 category router for authentication and authorization. Use when
   testing login flows, sessions, object authorization, JWT, OAuth, CORS, CSRF,
   and enterprise SSO weaknesses before any deeper auth topic skill.
-  ????????????????IDOR?JWT/OAuth?CSRF?CORS?SAML?
+  认证与授权分类路由：登录、会话、IDOR、JWT/OAuth、CSRF、CORS、SAML。
 ---
 
 > **ARTEX 使用边界（优先于下文）**
@@ -44,5 +44,5 @@ Use it to decide whether the issue is mainly login mechanics, object-level autho
 
 ## Related Categories
 
-- api-sec?????
+- api-sec（未安装）
 - Default credentials, username variants, wordlist sizing, and port focus are consolidated in [authbypass-authentication-flaws](../authbypass-authentication-flaws/SKILL.md)

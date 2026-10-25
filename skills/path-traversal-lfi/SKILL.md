@@ -3,7 +3,7 @@ name: path-traversal-lfi
 description: >-
   Path traversal and LFI playbook. Use when file paths, download endpoints,
   include operations, archive extraction, or wrapper behavior may expose
-  filesystem control. ???????/LFI??????????????????
+  filesystem control. 适用于路径遍历/LFI、包装器与文件读取验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**
@@ -22,7 +22,7 @@ description: >-
 Before deep exploitation, you can first load:
 
 - [upload insecure files](../upload-insecure-files/SKILL.md) when the primary attack surface is an upload workflow rather than an include or read primitive
-- ghost-bits-cast-attack????? when the target is a **Java backend** (Spring, Jetty, Undertow, Vert.x) and standard `../`, `%2e%2e`, `%252e` chains are WAF-blocked — Ghost Bits substitutes `.` with `阮` (U+962E) and `/` with `阯` (U+962F), re-enabling traversal through Spring CVE-2025-41242 and Jetty `%2>` hex-folding
+- ghost-bits-cast-attack（未安装） when the target is a **Java backend** (Spring, Jetty, Undertow, Vert.x) and standard `../`, `%2e%2e`, `%252e` chains are WAF-blocked — Ghost Bits substitutes `.` with `阮` (U+962E) and `/` with `阯` (U+962F), re-enabling traversal through Spring CVE-2025-41242 and Jetty `%2>` hex-folding
 
 ### First-pass traversal chains
 

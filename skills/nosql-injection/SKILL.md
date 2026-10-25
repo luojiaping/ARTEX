@@ -3,7 +3,7 @@ name: nosql-injection
 description: >-
   NoSQL injection playbook. Use when MongoDB-style operators, JSON query
   objects, flexible search filters, or backend query DSLs may allow data or
-  logic abuse. ??? MongoDB/NoSQL ???????????????????
+  logic abuse. 适用于 MongoDB/NoSQL 操作符注入与数据提取验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

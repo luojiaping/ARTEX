@@ -3,7 +3,7 @@ name: csrf-cross-site-request-forgery
 description: >-
   CSRF testing playbook. Use when reviewing state-changing web flows, anti-
   CSRF defenses, SameSite behavior, JSON CSRF, login CSRF, and OAuth state
-  handling. ??? CSRF token?SameSite?JSON/multipart CSRF ?????????
+  handling. 适用于 CSRF token、SameSite、JSON/multipart CSRF 验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

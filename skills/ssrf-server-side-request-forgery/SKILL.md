@@ -3,7 +3,7 @@ name: ssrf-server-side-request-forgery
 description: >-
   SSRF playbook. Use when the server fetches URLs, resolves hostnames, imports
   remote content, or can be driven toward internal networks, cloud metadata,
-  or secondary protocols. ??? SSRF ?????????????????????
+  or secondary protocols. 适用于 SSRF 入口发现、内网与云元数据验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

@@ -2,8 +2,8 @@
 name: xxe-xml-external-entity
 description: >-
   XXE playbook. Use when XML, SVG, OOXML, SOAP, or parser-driven imports may
-  resolve external entities, files, or internal network resources. ???
-  XXE?SVG/OOXML/SOAP ?????????????
+  resolve external entities, files, or internal network resources. 适用于
+  XXE、SVG/OOXML/SOAP 外部实体验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

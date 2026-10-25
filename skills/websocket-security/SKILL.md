@@ -3,7 +3,7 @@ name: websocket-security
 description: >-
   WebSocket handshake, CSWSH, tooling (wsrepl, ws-harness, Burp), and common
   flaws. Use when apps use real-time channels, chat, notifications, or WS-
-  backed APIs. ??? WebSocket ???CSWSH?Origin ????????????????
+  backed APIs. 适用于 WebSocket 握手、CSWSH、Origin 校验与消息注入验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**
@@ -14,7 +14,7 @@ description: >-
 
 # SKILL: WebSocket Security
 
-> **AI LOAD INSTRUCTION**: This skill covers WebSocket protocol basics, cross-site WebSocket hijacking (CSWSH), practical tooling bridges, and common vulnerability classes. Apply only in **authorized** tests; treat tokens and message content as sensitive. For REST/GraphQL companion testing, cross-load **api-sec?????** when present in the workspace.
+> **AI LOAD INSTRUCTION**: This skill covers WebSocket protocol basics, cross-site WebSocket hijacking (CSWSH), practical tooling bridges, and common vulnerability classes. Apply only in **authorized** tests; treat tokens and message content as sensitive. For REST/GraphQL companion testing, cross-load **api-sec（未安装）** when present in the workspace.
 
 ## 0. QUICK START
 
@@ -149,7 +149,7 @@ Prefer **Sec-WebSocket-Protocol**, **first-message auth**, or **cookie + CSRF to
 
 ## 6. RELATED ROUTING
 
-- From **api-sec?????** — authentication, authorization, IDOR, and rate limiting often **mirror** HTTP APIs behind the same WebSocket routes.
+- From **api-sec（未安装）** — authentication, authorization, IDOR, and rate limiting often **mirror** HTTP APIs behind the same WebSocket routes.
 
 **Note**: WebSocket often shares session and permission models with REST; use `api-sec` to align authentication and resource boundaries on the same backend.
 

@@ -2,8 +2,8 @@
 name: xss-cross-site-scripting
 description: >-
   XSS playbook. Use when user-controlled content reaches HTML, attributes,
-  JavaScript, DOM sinks, uploads, or multi-context rendering paths. ??? XSS
-  ??????????? CSP ?????????
+  JavaScript, DOM sinks, uploads, or multi-context rendering paths. 适用于 XSS
+  上下文判断、载荷选择与 CSP 绕过（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**

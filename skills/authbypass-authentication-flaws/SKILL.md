@@ -4,7 +4,7 @@ description: >-
   Authentication bypass testing playbook. Use when assessing login flows,
   password reset logic, account recovery, MFA bypass, token predictability,
   brute-force resistance, and session boundary flaws.
-  ???????????MFA???????????????????
+  适用于登录、密码重置、MFA、会话与账号接管路径验证（授权测试）。
 ---
 
 > **ARTEX 使用边界（优先于下文）**
