@@ -11,6 +11,8 @@ func TestClassify(t *testing.T) {
 		{"openrouter-prefix", "api_key", "sk-or-v1-abcdef", "gateway", "", "https://x.test/config", "openrouter", ""},
 		{"claude-oauth", KindOAuth, `{"access_token":"x"}`, "Claude Code", "oauth", "https://x.test/auth.json", "claude_oauth", ""},
 		{"relay-domain", KindLLMKey, "sk-unknown123456", "中转站", "api gateway", "https://api.relay-example.cn/v1", "relay", "https://api.relay-example.cn"},
+		{"service-wins", KindLLMKey, "sk-dashscope123456", "Alibaba DashScope (Model Studio)", "Kimi agent 环境", "https://x.test/.env", "dashscope", ""},
+		{"entry-domain", KindLLMKey, "sk-relay123456", "LongCat (Anthropic 兼容网关)", "ANTHROPIC_BASE_URL=https://api.longcat.chat/anthropic", "https://x.test/.env", "relay", "https://api.longcat.chat/anthropic"},
 		{"im-service", "", "123456:ABCDEF", "Telegram Bot", "", "https://x.test/bot", "", ""},
 	}
 	for _, tc := range cases {

@@ -23,10 +23,17 @@ func (s *Server) credSvc(w http.ResponseWriter) *credhunt.Service {
 func credFilterFrom(r *http.Request) credhunt.Filter {
 	q := r.URL.Query()
 	f := credhunt.Filter{
-		Provider: strings.TrimSpace(q.Get("provider")),
-		Status:   strings.TrimSpace(q.Get("status")),
-		Query:    strings.TrimSpace(q.Get("q")),
-		Archived: q.Get("archived") == "1" || q.Get("archived") == "true",
+		PClass:         strings.TrimSpace(q.Get("pclass")),
+		Provider:       strings.TrimSpace(q.Get("provider")),
+		Variant:        strings.TrimSpace(q.Get("variant")),
+		ServiceFamily:  strings.TrimSpace(q.Get("service_family")),
+		Protocol:       strings.TrimSpace(q.Get("protocol")),
+		Status:         strings.TrimSpace(q.Get("status")),
+		Risk:           strings.TrimSpace(q.Get("risk")),
+		Query:          strings.TrimSpace(q.Get("q")),
+		QuotaSupported: q.Get("quota_supported") == "1" || q.Get("quota_supported") == "true",
+		Manual:         q.Get("manual") == "1" || q.Get("manual") == "true",
+		Archived:       q.Get("archived") == "1" || q.Get("archived") == "true",
 	}
 	if v := strings.TrimSpace(q.Get("kind")); v != "" {
 		for _, one := range strings.Split(v, ",") {
@@ -76,6 +83,113 @@ func (s *Server) credStats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, stats)
 }
 
+// GET /api/credentials/facets
+func (s *Server) credFacets(w http.ResponseWriter, r *http.Request) {
+	svc := s.credSvc(w)
+	if svc == nil {
+		return
+	}
+	facets, err := svc.Store.Facets(r.Context())
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, facets)
+}
+
+// GET /api/credentials/providers
+func (s *Server) credProviders(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]any{"items": credhunt.ProviderRegistry()})
+}
+
+// POST /api/credentials/classify
+func (s *Server) credClassify(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Kind      string `json:"kind"`
+		Value     string `json:"value"`
+		Service   string `json:"service"`
+		Context   string `json:"context"`
+		SourceURL string `json:"source_url"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, credhunt.ClassifyDetailed(req.Kind, req.Value, req.Service, req.Context, req.SourceURL))
+}
+
+// POST /api/credentials/{uid}/status
+func (s *Server) credStatus(w http.ResponseWriter, r *http.Request) {
+	svc := s.credSvc(w)
+	if svc == nil {
+		return
+	}
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	if len([]rune(req.Status)) > 32 {
+		writeErr(w, 400, "手动状态最长 32 字")
+		return
+	}
+	uid := r.PathValue("uid")
+	if err := svc.Store.SetManualStatus(r.Context(), uid, req.Status); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	entry, _, err := svc.Store.Get(r.Context(), uid)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, entry)
+}
+
+// POST /api/credentials/{uid}/variant
+func (s *Server) credVariant(w http.ResponseWriter, r *http.Request) {
+	svc := s.credSvc(w)
+	if svc == nil {
+		return
+	}
+	var req struct {
+		Variant string `json:"variant"`
+		BaseURL string `json:"base_url"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeErr(w, 400, err.Error())
+		return
+	}
+	uid := r.PathValue("uid")
+	if err := svc.Store.SetVariant(r.Context(), uid, strings.TrimSpace(req.Variant), req.BaseURL); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	entry, _, err := svc.Store.Get(r.Context(), uid)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, entry)
+}
+
+// GET /api/credentials/{uid}/probes
+func (s *Server) credProbes(w http.ResponseWriter, r *http.Request) {
+	svc := s.credSvc(w)
+	if svc == nil {
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	items, err := svc.Store.Probes(r.Context(), r.PathValue("uid"), limit)
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"items": items})
+}
+
 // GET /api/credentials/{uid}
 func (s *Server) credGet(w http.ResponseWriter, r *http.Request) {
 	svc := s.credSvc(w)
@@ -88,7 +202,8 @@ func (s *Server) credGet(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, "凭据不存在: "+err.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]any{"entry": entry, "sources": sources})
+	probes, _ := svc.Store.Probes(r.Context(), uid, 20)
+	writeJSON(w, 200, map[string]any{"entry": entry, "sources": sources, "probes": probes})
 }
 
 // POST /api/credentials/{uid}/reveal  {"confirm":true}

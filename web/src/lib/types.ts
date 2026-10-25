@@ -1650,13 +1650,23 @@ export interface CredentialEntry {
   id: number;
   uid: string;
   kind: string;
+  pclass: string;
   provider: string;
+  provider_name: string;
+  variant: string;
+  variant_label: string;
   service: string;
+  service_family: string;
+  protocol: string;
   masked: string;
   status: string;
   status_detail: string;
   quota?: Record<string, unknown>;
+  quota_kind: string;
   risk: string;
+  manual_status: string;
+  manual_status_at?: string;
+  classification?: Record<string, unknown>;
   source_url: string;
   evidence_path: string;
   asset_id?: number;
@@ -1666,6 +1676,8 @@ export interface CredentialEntry {
   extra?: Record<string, unknown>;
   found_at: string;
   checked_at?: string;
+  fail_count: number;
+  next_probe_at?: string;
   archived: boolean;
   proxy?: CredentialProxyMeta;
 }
@@ -1697,16 +1709,89 @@ export interface CredentialStats {
 export interface CredentialVerifyResult {
   uid: string;
   kind: string;
+  pclass: string;
   provider: string;
+  provider_name: string;
+  variant: string;
+  variant_label: string;
   service: string;
   status: string;
   detail: string;
   http_status?: number;
   endpoint?: string;
   model?: string;
+  quota_kind: string;
   elapsed_ms: number;
   quota?: Record<string, unknown>;
   checked_at: string;
+}
+
+export interface CredentialFacetItem {
+  value: string;
+  label?: string;
+  pclass?: string;
+  provider_name?: string;
+  variant_label?: string;
+  n: number;
+}
+
+export interface CredentialFacets {
+  total: number;
+  llm_key: number;
+  oauth: number;
+  valid: number;
+  warn: number;
+  invalid: number;
+  unverified: number;
+  probed: number;
+  quota_supported: number;
+  proxy_alive: number;
+  by_pclass: CredentialFacetItem[];
+  by_provider: CredentialFacetItem[];
+  by_variant: CredentialFacetItem[];
+  by_status: CredentialFacetItem[];
+  by_risk: CredentialFacetItem[];
+  by_service: CredentialFacetItem[];
+  by_protocol: CredentialFacetItem[];
+}
+
+export interface CredentialProviderVariant {
+  id: string;
+  label: string;
+  base: string;
+  model: string;
+  avail: string;
+  quota: string;
+}
+
+export interface CredentialProvider {
+  id: string;
+  name: string;
+  class: string;
+  pclass: string;
+  style: string;
+  base: string;
+  model: string;
+  quota: string;
+  avail: string;
+  variants: CredentialProviderVariant[];
+}
+
+export interface CredentialProbe {
+  id: number;
+  uid: string;
+  ts: string;
+  mode: string;
+  status: string;
+  http: number;
+  ms: number;
+  summary: string;
+  pclass: string;
+  provider: string;
+  variant: string;
+  quota_kind: string;
+  quota?: Record<string, unknown>;
+  source: string;
 }
 
 export interface ProxyProbeResult {

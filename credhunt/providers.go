@@ -17,10 +17,45 @@ type Provider struct {
 	BaseFallbacks []string
 	Model         string
 	Quota         string
+	Avail         string // openai_models|openai_chat|anthropic_chat|gemini_key|openrouter_key|oauth_usage|relay
 	Headers       map[string]string
 	Match         *regexp.Regexp
 	Prefixes      []string
 	Endpoint      string // oauth usage endpoint
+	Variants      []Variant
+}
+
+// Variant is a provider sub-form (balance vs coding plan, Zen vs Go, token-plan
+// region, z.ai vs bigmodel). A variant overrides base/model/avail/quota.
+type Variant struct {
+	ID            string
+	Label         string
+	Base          string
+	BaseFallbacks []string
+	Model         string
+	Avail         string
+	Quota         string
+	Auto          *regexp.Regexp
+}
+
+// Classification is the complete output of the provider classifier.
+type Classification struct {
+	ProviderID    string  `json:"provider"`
+	ProviderName  string  `json:"provider_name"`
+	PClass        string  `json:"pclass"`
+	VariantID     string  `json:"variant"`
+	VariantLabel  string  `json:"variant_label"`
+	Style         string  `json:"style"`
+	Base          string  `json:"base"`
+	BaseOverride  string  `json:"base_override,omitempty"`
+	Model         string  `json:"model"`
+	QuotaKind     string  `json:"quota_kind"`
+	Avail         string  `json:"avail"`
+	MatchedBy     string  `json:"matched_by"`
+	Confidence    float64 `json:"confidence"`
+	Domain        string  `json:"domain,omitempty"`
+	ServiceFamily string  `json:"service_family"`
+	Protocol      string  `json:"protocol,omitempty"`
 }
 
 var providers = []Provider{
@@ -114,6 +149,72 @@ var providers = []Provider{
 		Match: regexp.MustCompile(`(?i)中转|代理网关|gateway|网关|relay|私有|vllm|one-?api|new-?api|9router|anyrouter`)},
 }
 
+// init attaches the fine-grained sub-forms (variants) and availability adapters
+// ported from the legacy LLM credential service.
+func init() {
+	variant := func(id, label, base, model, avail, quota, auto string, fallbacks ...string) Variant {
+		v := Variant{ID: id, Label: label, Base: base, Model: model, Avail: avail, Quota: quota,
+			BaseFallbacks: fallbacks}
+		if auto != "" {
+			v.Auto = regexp.MustCompile(`(?i)` + auto)
+		}
+		return v
+	}
+	set := func(id, avail string, variants ...Variant) {
+		for i := range providers {
+			if providers[i].ID == id {
+				providers[i].Avail = avail
+				providers[i].Variants = variants
+				return
+			}
+		}
+	}
+	set("mimo", "openai_models",
+		variant("balance", "余额版（按量付费）", "https://api.xiaomimimo.com/v1", "mimo-v2.5", "openai_models", "none", ""),
+		variant("tokenplan_cn", "Token Plan（国内）", "https://token-plan-cn.xiaomimimo.com/v1", "mimo-v2.5-pro", "openai_models", "none", `token[-_ ]?plan[-_ ]*cn|xiaomi.?coding`),
+		variant("tokenplan_sgp", "Token Plan（新加坡）", "https://token-plan-sgp.xiaomimimo.com/v1", "mimo-v2.5-pro", "openai_models", "none", `token[-_ ]?plan[-_ ]*sgp`),
+		variant("tokenplan_ams", "Token Plan（阿姆斯特丹）", "https://token-plan-ams.xiaomimimo.com/v1", "mimo-v2.5-pro", "openai_models", "none", `token[-_ ]?plan[-_ ]*ams`),
+	)
+	set("opencode", "opencode_go_usage",
+		variant("zen", "Zen（按量付费）", "https://opencode.ai/zen/v1", "", "opencode_go_usage", "opencode_go_usage", "", "https://opencode.ai/zen/go/v1"),
+		variant("go", "Go（订阅套餐）", "https://opencode.ai/zen/go/v1", "", "opencode_go_usage", "opencode_go_usage", `\bgo\b`),
+	)
+	set("kimi", "openai_models",
+		variant("balance", "余额版（按量付费）", "https://api.moonshot.cn/v1", "moonshot-v1-8k", "openai_models", "moonshot_balance", "", "https://api.moonshot.ai/v1"),
+		variant("coding", "Kimi Coding 套餐", "https://api.kimi.com/coding", "", "kimi_coding", "kimi_coding", `coding|kimi\s*code`),
+	)
+	set("glm", "openai_chat",
+		variant("balance", "余额版（开放平台）", "https://open.bigmodel.cn/api/paas/v4", "glm-4-flash", "openai_chat", "none", ""),
+		variant("coding", "GLM Coding（国内）", "https://open.bigmodel.cn", "", "zhipu_coding", "zhipu_coding", `glm.?(coding|code)|coding.?plan`),
+		variant("coding_zai", "GLM Coding（z.ai）", "https://api.z.ai", "", "zhipu_coding", "zhipu_coding", `z\.ai`),
+	)
+	set("minimax", "openai_chat",
+		variant("balance", "余额版（按量付费）", "https://api.minimaxi.com/v1", "MiniMax-Text-01", "openai_chat", "none", ""),
+		variant("coding", "Token / Coding 套餐", "https://api.minimaxi.com/v1", "MiniMax-Text-01", "minimax_coding", "minimax_coding", `coding|token.?plan`, "https://api.minimax.io/v1"),
+	)
+	set("ark", "openai_chat",
+		variant("balance", "余额版（按量付费）", "https://ark.cn-beijing.volces.com/api/v3", "doubao-1-5-lite-32k-250115", "openai_chat", "none", ""),
+		variant("coding", "Coding Plan（/api/coding/v3）", "https://ark.cn-beijing.volces.com/api/coding/v3", "doubao-seed-code", "openai_chat", "none", `coding|arkcode`),
+	)
+	for i := range providers {
+		switch providers[i].ID {
+		case "openrouter":
+			providers[i].Avail = "openrouter_key"
+			providers[i].Quota = "openrouter_key"
+		case "deepseek":
+			providers[i].Avail = "openai_models"
+		case "anthropic":
+			providers[i].Avail = "anthropic_chat"
+		case "gemini":
+			providers[i].Avail = "gemini_key"
+		case "relay":
+			providers[i].Avail = "relay"
+		case "codex_oauth", "claude_oauth", "copilot", "google_oauth":
+			providers[i].Avail = "oauth_usage"
+		}
+	}
+}
+
 var (
 	officialDomains = map[string]bool{
 		"openai.com": true, "anthropic.com": true, "googleapis.com": true, "x.ai": true,
@@ -130,14 +231,38 @@ var (
 	excludeRe     = regexp.MustCompile(`(?i)tavily|elevenlabs|\bfal\b|notion|apify|smtp|github|gitlab|aws|azure|gcp|ssh|ssl|vnc|jupyter|mysql|postgres|mariadb|wordpress|telegram|discord|feishu|dingtalk|wechat|weixin|slack|whatsapp|qq[\s_-]?bot|ilink|urlscan|fofa|shodan|zoomeye|censys|virustotal|securitytrails|leakix|binaryedge|greynoise|quake|hunter\.io|capsolver|serper|firecrawl|supabase|firebase|gmail|outlook|163\.com|qq\.com`)
 	placeholderRe = regexp.MustCompile(`(?i)^(x{3,}|your[-_ ]|changeme|change[-_ ]me|example|sample|test[-_ ]?key|dummy|placeholder|redacted|replace[-_ ]?me|<[^>]+>|\$\{[^}]+\}|\{\{[^}]+\}|\.\.\.|…)$`)
 	imServiceRe   = regexp.MustCompile(`(?i)(telegram|discord|feishu|飞书|lark|wechat|weixin|微信|公众号|dingtalk|钉钉|slack|wecom|企业微信|whatsapp|im[._-]?bot|ilink|qq[\s_-]?bot)`)
-	domainRe      = regexp.MustCompile(`(?i)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|cn|net|org|io|ai|app|dev|pro|xyz|me|co|top|site|cc|info|biz|shop|us|uk|de|fr|ru|su|eu|cloud|tech|link|live|online|store|fun|space|website|icu|club|art|jp|kr|br|in|id|tw|hk|sg|my|vn|th|ph|one|best|win|vip|work|studio|news|blog|host|today|life|world|zone|digital|media|agency|solutions|services|systems|network|software|tools|run|sh|gg|st|nu|se|no|fi|dk|nl|be|ch|at|it|es|pt|gr|cz|sk|ro|bg|lt|lv|ee|ua|by|kz|uz|az|ge|am|md|rs|hr|si|ba|mk|al|mt|is|ie|lu|li|monster))\b`)
+	domainRe      = regexp.MustCompile(`(?i)\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|cn|net|org|io|ai|app|dev|pro|xyz|me|co|top|site|cc|info|biz|shop|us|uk|de|fr|ru|su|eu|cloud|tech|link|live|online|store|fun|space|website|icu|club|art|chat|jp|kr|br|in|id|tw|hk|sg|my|vn|th|ph|one|best|win|vip|work|studio|news|blog|host|today|life|world|zone|digital|media|agency|solutions|services|systems|network|software|tools|run|sh|gg|st|nu|se|no|fi|dk|nl|be|ch|at|it|es|pt|gr|cz|sk|ro|bg|lt|lv|ee|ua|by|kz|uz|az|ge|am|md|rs|hr|si|ba|mk|al|mt|is|ie|lu|li|monster))\b`)
 )
 
 // Classify returns the provider id and an optional base override inferred from
 // the context. It never guesses a base from the secret itself.
 func Classify(kind, value, service, context, sourceURL string) (providerID, baseOverride string) {
+	c := ClassifyDetailed(kind, value, service, context, sourceURL)
+	return c.ProviderID, c.BaseOverride
+}
+
+// ClassifyDetailed returns the full provider/variant/pclass classification used
+// by the ledger facets and the verification adapters.
+func ClassifyDetailed(kind, value, service, context, sourceURL string) Classification {
 	text := strings.ToLower(strings.Join([]string{service, context, sourceURL}, " "))
+	mainText := strings.ToLower(strings.TrimSpace(service))
+	matchText := mainText
+	if matchText == "" {
+		matchText = text
+	}
 	v := strings.ToLower(strings.TrimSpace(value))
+	c := Classification{ProviderName: "未识别", PClass: pclassForKind(kind), QuotaKind: "none",
+		Avail: "none", MatchedBy: "unknown", Confidence: 0}
+	switch {
+	case strings.HasPrefix(kind, "proxy"):
+		c.PClass = "proxy"
+	case kind == KindOAuth:
+		c.PClass = "oauth"
+	case kind == KindLLMKey || kind == KindAPIKey || kind == KindToken:
+		c.PClass = "key"
+	case kind == KindPassword || kind == KindPrivateKey:
+		c.PClass = "generic"
+	}
 
 	// OAuth package structure wins when the service is recognizable.
 	if strings.Contains(v, `"refresh_token"`) || strings.Contains(v, `"access_token"`) ||
@@ -147,7 +272,7 @@ func Classify(kind, value, service, context, sourceURL string) (providerID, base
 				continue
 			}
 			if prefixMatch(p, v) || (p.Match != nil && p.Match.MatchString(text)) {
-				return p.ID, ""
+				return classificationFor(p, kind, text, "oauth", 0.96, "")
 			}
 		}
 	}
@@ -158,31 +283,174 @@ func Classify(kind, value, service, context, sourceURL string) (providerID, base
 			continue
 		}
 		if prefixMatch(p, v) {
-			return p.ID, ""
+			return classificationFor(p, kind, text, "prefix", 0.97, "")
+		}
+	}
+	// A relay/gateway with a concrete non-official base URL wins over a vendor
+	// keyword (e.g. "LongCat (Anthropic 兼容网关)").
+	if relay, ok := ProviderByID("relay"); ok && relay.Match != nil && relay.Match.MatchString(matchText) {
+		base := extractBaseURL(context)
+		domain := extractDomain(context)
+		if base != "" || domain != "" {
+			out := classificationFor(relay, kind, text, "relay", 0.78, domain)
+			if base != "" {
+				out.Base, out.BaseOverride = base, base
+			}
+			return out
 		}
 	}
 	for _, p := range providers {
-		if p.Match != nil && p.Match.MatchString(text) {
+		if p.Match != nil && p.Match.MatchString(matchText) {
 			if p.ID == "gemini" && regexp.MustCompile(`(?i)places|maps|geocod|youtube|firebase|vision api|translate|cloud platform`).MatchString(text) {
 				continue
 			}
 			if p.ID == "relay" {
-				if d := extractDomain(sourceURL + " " + context); d != "" {
-					return "relay", "https://" + d
+				domain := extractDomain(sourceURL + " " + context)
+				out := classificationFor(p, kind, text, "relay", 0.68, domain)
+				if base := extractBaseURL(context); base != "" {
+					out.Base, out.BaseOverride = base, base
 				}
+				return out
 			}
-			return p.ID, ""
+			return classificationFor(p, kind, text, "regex", 0.9, "")
 		}
 	}
 	if excludeRe.MatchString(text) {
-		return "", ""
+		c.MatchedBy = "excluded"
+		return c
 	}
 	if kind == KindLLMKey || kind == KindOAuth || kind == "" {
 		if d := extractDomain(sourceURL + " " + context); d != "" {
-			return "relay", "https://" + d
+			p, _ := ProviderByID("relay")
+			out := classificationFor(p, kind, text, "relay-domain", 0.55, d)
+			if base := extractBaseURL(context); base != "" {
+				out.Base, out.BaseOverride = base, base
+			}
+			return out
 		}
 	}
-	return "", ""
+	return c
+}
+
+func pclassForKind(kind string) string {
+	switch {
+	case strings.HasPrefix(kind, "proxy"):
+		return "proxy"
+	case kind == KindOAuth:
+		return "oauth"
+	case kind == KindLLMKey || kind == KindAPIKey || kind == KindToken:
+		return "key"
+	case kind == KindPassword || kind == KindPrivateKey:
+		return "generic"
+	default:
+		return "generic"
+	}
+}
+
+func classificationFor(p Provider, kind, text, matchedBy string, confidence float64, domain string) Classification {
+	c := Classification{ProviderID: p.ID, ProviderName: p.Name, PClass: pclassForKind(kind),
+		Style: p.Style, Base: p.Base, Model: p.Model, QuotaKind: defaultQuota(p),
+		Avail: defaultAvail(p), MatchedBy: matchedBy, Confidence: confidence, ServiceFamily: p.ID}
+	if p.Class == "oauth" {
+		c.PClass = "oauth"
+	}
+	if p.ID == "relay" {
+		c.PClass = "relay"
+		c.ProviderName = "中转 / 兼容网关"
+		if domain != "" {
+			c.Base = "https://" + domain
+			c.BaseOverride = c.Base
+			c.Domain = domain
+		}
+	}
+	if variant, ok := pickVariant(p, text); ok {
+		c.VariantID, c.VariantLabel = variant.ID, variant.Label
+		if variant.Base != "" {
+			c.Base = variant.Base
+		}
+		if variant.Model != "" {
+			c.Model = variant.Model
+		}
+		if variant.Avail != "" {
+			c.Avail = variant.Avail
+		}
+		if variant.Quota != "" {
+			c.QuotaKind = variant.Quota
+		}
+	}
+	return c
+}
+
+func defaultQuota(p Provider) string {
+	if p.Quota != "" {
+		return p.Quota
+	}
+	return "none"
+}
+
+func defaultAvail(p Provider) string {
+	if p.Avail != "" {
+		return p.Avail
+	}
+	switch p.Style {
+	case "oauth":
+		return "oauth_usage"
+	case "anthropic":
+		return "anthropic_chat"
+	case "gemini":
+		return "gemini_key"
+	case "relay":
+		return "relay"
+	default:
+		return "openai_models"
+	}
+}
+
+func pickVariant(p Provider, text string) (Variant, bool) {
+	for _, v := range p.Variants {
+		if v.Auto != nil && v.Auto.MatchString(text) {
+			return v, true
+		}
+	}
+	return Variant{}, false
+}
+
+// ProviderForEntry resolves the variant-adjusted provider used by verification.
+func ProviderForEntry(e Entry) (Provider, bool) {
+	p, ok := ProviderByID(e.Provider)
+	if !ok {
+		base := strings.TrimSpace(asString(e.Extra["base_url"]))
+		if base == "" {
+			return Provider{}, false
+		}
+		p = Provider{ID: "relay", Name: "中转 / 兼容网关", Class: "key", Style: "openai", Base: base}
+	}
+	if e.Variant != "" {
+		for _, v := range p.Variants {
+			if v.ID == e.Variant {
+				if v.Base != "" {
+					p.Base = v.Base
+				}
+				if len(v.BaseFallbacks) > 0 {
+					p.BaseFallbacks = v.BaseFallbacks
+				}
+				if v.Model != "" {
+					p.Model = v.Model
+				}
+				if v.Avail != "" {
+					p.Avail = v.Avail
+				}
+				if v.Quota != "" {
+					p.Quota = v.Quota
+				}
+				break
+			}
+		}
+	}
+	if base := strings.TrimSpace(asString(e.Extra["base_url"])); base != "" && p.Base == "" {
+		p.Base = base
+	}
+	return p, true
 }
 
 func prefixMatch(p Provider, lowerValue string) bool {
@@ -217,6 +485,38 @@ func extractDomain(text string) string {
 	return ""
 }
 
+var baseURLRe = regexp.MustCompile(`(?i)https?://[^\s"'<>]+`)
+
+// extractBaseURL pulls a concrete non-official API URL from context/source.
+func extractBaseURL(text string) string {
+	for _, m := range baseURLRe.FindAllString(text, -1) {
+		u := strings.TrimRight(m, ".,;:)]}")
+		if i := strings.IndexFunc(u, func(r rune) bool { return r > 127 }); i >= 0 {
+			u = u[:i]
+		}
+		u = strings.TrimRight(u, ".,;:)]}")
+		parsed, err := url.Parse(u)
+		if err != nil || parsed.Hostname() == "" {
+			continue
+		}
+		host := strings.ToLower(parsed.Hostname())
+		if officialDomains[host] {
+			continue
+		}
+		skip := false
+		for root := range officialDomains {
+			if strings.HasSuffix(host, "."+root) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			return u
+		}
+	}
+	return ""
+}
+
 // ProviderByID looks up a provider definition.
 func ProviderByID(id string) (Provider, bool) {
 	for _, p := range providers {
@@ -231,9 +531,15 @@ func ProviderByID(id string) (Provider, bool) {
 func ProviderRegistry() []map[string]any {
 	out := make([]map[string]any, 0, len(providers))
 	for _, p := range providers {
+		variants := make([]map[string]any, 0, len(p.Variants))
+		for _, v := range p.Variants {
+			variants = append(variants, map[string]any{"id": v.ID, "label": v.Label,
+				"base": v.Base, "model": v.Model, "avail": v.Avail, "quota": v.Quota})
+		}
 		out = append(out, map[string]any{
-			"id": p.ID, "name": p.Name, "class": p.Class, "style": p.Style,
-			"base": p.Base, "model": p.Model, "quota": p.Quota,
+			"id": p.ID, "name": p.Name, "class": p.Class, "pclass": p.Class, "style": p.Style,
+			"base": p.Base, "model": p.Model, "quota": p.Quota, "avail": defaultAvail(p),
+			"variants": variants,
 		})
 	}
 	return out

@@ -71,6 +71,12 @@ func (s *Service) SubmitProxies(ctx context.Context, inputs []Input, expand bool
 		parentInput := in
 		parentInput.Kind = KindProxySubscription
 		parentInput.Package = nil
+		parentInput.Provider = firstNonEmpty(in.Provider, "proxy")
+		parentInput.ProviderName = "代理订阅"
+		parentInput.PClass = "proxy"
+		parentInput.ServiceFamily = "proxy"
+		parentInput.Protocol = "subscription"
+		parentInput.QuotaKind = "none"
 		content := value
 		evidence := in.EvidencePath
 		runID := "proxies"
@@ -116,6 +122,13 @@ func (s *Service) SubmitProxies(ctx context.Context, inputs []Input, expand bool
 				Kind:           KindProxyNode,
 				Value:          string(cfg),
 				Provider:       "proxy",
+				ProviderName:   "代理节点",
+				PClass:         "proxy",
+				ServiceFamily:  node.Protocol,
+				Protocol:       node.Protocol,
+				QuotaKind:      "none",
+				Variant:        node.Protocol,
+				VariantLabel:   node.Protocol,
 				Service:        firstNonEmpty(node.Remark, node.Protocol+"://"+node.Server),
 				SourceURL:      firstNonEmpty(in.SourceURL, value),
 				EvidencePath:   evidence,

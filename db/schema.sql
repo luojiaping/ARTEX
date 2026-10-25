@@ -1403,6 +1403,49 @@ CREATE INDEX IF NOT EXISTS idx_notification_deliveries_channel
     ON notification_deliveries(channel_id, id DESC);
 
 -- =====================================================================
+-- Credential fine-grained classification (ported from the legacy console)
+-- =====================================================================
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS pclass            TEXT NOT NULL DEFAULT '';
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS provider_name      TEXT NOT NULL DEFAULT '';
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS variant            TEXT NOT NULL DEFAULT '';
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS variant_label      TEXT NOT NULL DEFAULT '';
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS service_family     TEXT NOT NULL DEFAULT '';
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS protocol           TEXT NOT NULL DEFAULT '';
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS quota_kind         TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS manual_status      TEXT NOT NULL DEFAULT '';
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS manual_status_at   TIMESTAMPTZ;
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS classification     JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS fail_count         INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE cred_entries ADD COLUMN IF NOT EXISTS next_probe_at      TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_cred_pclass    ON cred_entries(pclass, found_at DESC) WHERE archived = false;
+CREATE INDEX IF NOT EXISTS idx_cred_variant   ON cred_entries(provider, variant) WHERE archived = false;
+CREATE INDEX IF NOT EXISTS idx_cred_family    ON cred_entries(service_family) WHERE archived = false;
+CREATE INDEX IF NOT EXISTS idx_cred_quota     ON cred_entries(quota_kind) WHERE archived = false;
+CREATE INDEX IF NOT EXISTS idx_cred_nextprobe ON cred_entries(next_probe_at) WHERE archived = false AND next_probe_at IS NOT NULL;
+
+-- 每次验活/探测的历史快照。source=verify|manual|legacy，legacy 表示从旧控制台
+-- 迁入的历史结论，不能冒充本次实测。
+CREATE TABLE IF NOT EXISTS cred_probes (
+    id          BIGSERIAL PRIMARY KEY,
+    uid         TEXT NOT NULL,
+    ts          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    mode        TEXT NOT NULL DEFAULT 'verify',
+    status      TEXT NOT NULL DEFAULT '',
+    http        INTEGER NOT NULL DEFAULT 0,
+    ms          INTEGER NOT NULL DEFAULT 0,
+    summary     TEXT NOT NULL DEFAULT '',
+    pclass      TEXT NOT NULL DEFAULT '',
+    provider    TEXT NOT NULL DEFAULT '',
+    variant     TEXT NOT NULL DEFAULT '',
+    quota_kind  TEXT NOT NULL DEFAULT '',
+    quota       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source      TEXT NOT NULL DEFAULT 'verify'
+);
+CREATE INDEX IF NOT EXISTS idx_cred_probes_uid ON cred_probes(uid, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_cred_probes_ts  ON cred_probes(ts DESC);
+
+-- =====================================================================
 -- Credential hunting ledger (credhunt)
 -- =====================================================================
 -- 扫描到的 LLM Key / OAuth 包 / 凭据 / 私钥 / 代理节点。密钥只以 AES-256-GCM

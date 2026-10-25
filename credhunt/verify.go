@@ -40,7 +40,7 @@ func (v *Verifier) Verify(ctx context.Context, entries []Entry, secrets []string
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			results[idx] = v.verifyOne(ctx, entries[idx], secrets[idx])
-			_ = v.store.UpdateVerification(ctx, results[idx].UID, results[idx].Status, results[idx].Detail, results[idx].Quota)
+			_ = v.store.SaveProbe(ctx, results[idx], "verify")
 		}(i)
 	}
 	wg.Wait()
@@ -49,27 +49,29 @@ func (v *Verifier) Verify(ctx context.Context, entries []Entry, secrets []string
 
 func (v *Verifier) verifyOne(ctx context.Context, e Entry, secret string) (res VerifyResult) {
 	start := time.Now()
-	res = VerifyResult{UID: e.UID, Kind: e.Kind, Provider: e.Provider, Service: e.Service,
-		Status: StatusUnsupported, CheckedAt: start}
+	res = VerifyResult{UID: e.UID, Kind: e.Kind, PClass: e.PClass, Provider: e.Provider,
+		ProviderName: e.ProviderName, Variant: e.Variant, VariantLabel: e.VariantLabel,
+		Service: e.Service, Status: StatusUnsupported, QuotaKind: e.QuotaKind, CheckedAt: start}
 	defer func() { res.ElapsedMS = time.Since(start).Milliseconds() }()
 
-	provider, ok := ProviderByID(e.Provider)
-	base := strings.TrimSpace(asString(e.Extra["base_url"]))
+	provider, ok := ProviderForEntry(e)
 	if !ok {
-		if base == "" {
-			res.Detail = "unknown provider and no base_url"
-			return res
-		}
-		provider = Provider{ID: "relay", Name: "relay", Class: "key", Style: "openai", Base: base}
+		res.Detail = "unknown provider and no base_url"
+		return res
 	}
-	if base == "" {
-		base = provider.Base
+	base := provider.Base
+	res.Model = provider.Model
+	res.QuotaKind = defaultQuota(provider)
+	if res.PClass == "" {
+		res.PClass = pclassForKind(e.Kind)
+	}
+	if res.ProviderName == "" {
+		res.ProviderName = provider.Name
 	}
 	if base == "" {
 		res.Detail = "provider has no API base"
 		return res
 	}
-	res.Model = provider.Model
 
 	if provider.Style == "oauth" {
 		return v.verifyOAuth(ctx, res, provider, secret)

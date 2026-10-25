@@ -50,6 +50,15 @@ type Input struct {
 	TaskID         int64           `json:"task_id,omitempty"`
 	ConversationID int64           `json:"conversation_id,omitempty"`
 	ParentUID      string          `json:"parent_uid,omitempty"` // proxy subscription parent
+	// Optional denormalized classification (normally filled by ClassifyDetailed).
+	PClass         string         `json:"pclass,omitempty"`
+	ProviderName   string         `json:"provider_name,omitempty"`
+	Variant        string         `json:"variant,omitempty"`
+	VariantLabel   string         `json:"variant_label,omitempty"`
+	ServiceFamily  string         `json:"service_family,omitempty"`
+	Protocol       string         `json:"protocol,omitempty"`
+	QuotaKind      string         `json:"quota_kind,omitempty"`
+	Classification map[string]any `json:"classification,omitempty"`
 }
 
 // Entry is the model-facing/API view of a credential. Secret is never included.
@@ -57,13 +66,23 @@ type Entry struct {
 	ID             int64          `json:"id"`
 	UID            string         `json:"uid"`
 	Kind           string         `json:"kind"`
+	PClass         string         `json:"pclass"`
 	Provider       string         `json:"provider"`
+	ProviderName   string         `json:"provider_name"`
+	Variant        string         `json:"variant"`
+	VariantLabel   string         `json:"variant_label"`
 	Service        string         `json:"service"`
+	ServiceFamily  string         `json:"service_family"`
+	Protocol       string         `json:"protocol"`
 	Masked         string         `json:"masked"`
 	Status         string         `json:"status"`
 	StatusDetail   string         `json:"status_detail"`
 	Quota          map[string]any `json:"quota,omitempty"`
+	QuotaKind      string         `json:"quota_kind"`
 	Risk           string         `json:"risk"`
+	ManualStatus   string         `json:"manual_status"`
+	ManualStatusAt *time.Time     `json:"manual_status_at,omitempty"`
+	Classification map[string]any `json:"classification,omitempty"`
 	SourceURL      string         `json:"source_url"`
 	EvidencePath   string         `json:"evidence_path"`
 	AssetID        int64          `json:"asset_id,omitempty"`
@@ -73,6 +92,8 @@ type Entry struct {
 	Extra          map[string]any `json:"extra,omitempty"`
 	FoundAt        time.Time      `json:"found_at"`
 	CheckedAt      *time.Time     `json:"checked_at,omitempty"`
+	FailCount      int            `json:"fail_count"`
+	NextProbeAt    *time.Time     `json:"next_probe_at,omitempty"`
 	Archived       bool           `json:"archived"`
 	Proxy          *ProxyMeta     `json:"proxy,omitempty"`
 }
@@ -121,14 +142,21 @@ type SubmitItem struct {
 
 // Filter selects ledger rows.
 type Filter struct {
-	Kinds    []string
-	Provider string
-	Status   string
-	Query    string
-	TaskID   int64
-	Archived bool
-	Limit    int
-	Offset   int
+	Kinds          []string
+	PClass         string
+	Provider       string
+	Variant        string
+	ServiceFamily  string
+	Protocol       string
+	Status         string
+	Risk           string
+	Query          string
+	TaskID         int64
+	QuotaSupported bool
+	Manual         bool
+	Archived       bool
+	Limit          int
+	Offset         int
 }
 
 // Stats is the ledger dashboard aggregate.
@@ -144,20 +172,74 @@ type Stats struct {
 	ByStatus   map[string]int64 `json:"by_status"`
 }
 
+// FacetItem is one bucket in a facet response.
+type FacetItem struct {
+	Value        string `json:"value"`
+	Label        string `json:"label,omitempty"`
+	PClass       string `json:"pclass,omitempty"`
+	ProviderName string `json:"provider_name,omitempty"`
+	VariantLabel string `json:"variant_label,omitempty"`
+	N            int64  `json:"n"`
+}
+
+// Facets is the LLM-credential-style faceted breakdown.
+type Facets struct {
+	Total      int64       `json:"total"`
+	LLMKey     int64       `json:"llm_key"`
+	OAuth      int64       `json:"oauth"`
+	Valid      int64       `json:"valid"`
+	Warn       int64       `json:"warn"`
+	Invalid    int64       `json:"invalid"`
+	Unverified int64       `json:"unverified"`
+	Probed     int64       `json:"probed"`
+	QuotaSupp  int64       `json:"quota_supported"`
+	ProxyAlive int64       `json:"proxy_alive"`
+	ByPClass   []FacetItem `json:"by_pclass"`
+	ByProvider []FacetItem `json:"by_provider"`
+	ByVariant  []FacetItem `json:"by_variant"`
+	ByStatus   []FacetItem `json:"by_status"`
+	ByRisk     []FacetItem `json:"by_risk"`
+	ByService  []FacetItem `json:"by_service"`
+	ByProtocol []FacetItem `json:"by_protocol"`
+}
+
+// Probe is one historical verification snapshot.
+type Probe struct {
+	ID        int64          `json:"id"`
+	UID       string         `json:"uid"`
+	TS        time.Time      `json:"ts"`
+	Mode      string         `json:"mode"`
+	Status    string         `json:"status"`
+	HTTP      int            `json:"http"`
+	MS        int            `json:"ms"`
+	Summary   string         `json:"summary"`
+	PClass    string         `json:"pclass"`
+	Provider  string         `json:"provider"`
+	Variant   string         `json:"variant"`
+	QuotaKind string         `json:"quota_kind"`
+	Quota     map[string]any `json:"quota,omitempty"`
+	Source    string         `json:"source"`
+}
+
 // VerifyResult is one verification outcome.
 type VerifyResult struct {
-	UID        string         `json:"uid"`
-	Kind       string         `json:"kind"`
-	Provider   string         `json:"provider"`
-	Service    string         `json:"service"`
-	Status     string         `json:"status"`
-	Detail     string         `json:"detail"`
-	HTTPStatus int            `json:"http_status,omitempty"`
-	Endpoint   string         `json:"endpoint,omitempty"`
-	Model      string         `json:"model,omitempty"`
-	ElapsedMS  int64          `json:"elapsed_ms"`
-	Quota      map[string]any `json:"quota,omitempty"`
-	CheckedAt  time.Time      `json:"checked_at"`
+	UID          string         `json:"uid"`
+	Kind         string         `json:"kind"`
+	PClass       string         `json:"pclass"`
+	Provider     string         `json:"provider"`
+	ProviderName string         `json:"provider_name"`
+	Variant      string         `json:"variant"`
+	VariantLabel string         `json:"variant_label"`
+	Service      string         `json:"service"`
+	Status       string         `json:"status"`
+	Detail       string         `json:"detail"`
+	HTTPStatus   int            `json:"http_status,omitempty"`
+	Endpoint     string         `json:"endpoint,omitempty"`
+	Model        string         `json:"model,omitempty"`
+	QuotaKind    string         `json:"quota_kind"`
+	ElapsedMS    int64          `json:"elapsed_ms"`
+	Quota        map[string]any `json:"quota,omitempty"`
+	CheckedAt    time.Time      `json:"checked_at"`
 }
 
 // ProbeResult is one proxy-node probe outcome.

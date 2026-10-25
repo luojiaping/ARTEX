@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	pgdb "github.com/Autumn-27/artex/db"
 )
@@ -15,6 +16,14 @@ type Store struct {
 	db  *pgdb.DB
 	key []byte
 }
+
+const entrySelectCols = `c.id,c.uid,c.kind,c.pclass,c.provider,c.provider_name,c.variant,c.variant_label,
+ c.service,c.service_family,c.protocol,c.secret_hint,c.status,c.status_detail,
+ c.quota,c.quota_kind,c.risk,c.manual_status,c.manual_status_at,c.classification,
+ c.source_url,c.evidence_path,COALESCE(c.asset_id,0),COALESCE(c.task_id,0),COALESCE(c.conversation_id,0),
+ c.context,c.extra,c.found_at,c.checked_at,c.fail_count,c.next_probe_at,c.archived,
+ COALESCE(p.protocol,''),COALESCE(p.server,''),COALESCE(p.port,0),COALESCE(p.status,''),
+ COALESCE(p.delay_ms,0),COALESCE(p.exit_ip,''),COALESCE(p.exit_country,''),COALESCE(p.message,''),p.checked_at`
 
 // NewStore opens the ledger and loads/creates its encryption key.
 func NewStore(db *pgdb.DB, keyPath string) (*Store, error) {
@@ -75,18 +84,56 @@ func (s *Store) submitOne(ctx context.Context, in Input) (SubmitItem, error) {
 	}
 	provider := strings.TrimSpace(in.Provider)
 	baseOverride := strings.TrimSpace(in.BaseURL)
-	if provider == "" {
-		var inferredBase string
-		provider, inferredBase = Classify(kind, value, service, in.Context, in.SourceURL)
-		if baseOverride == "" {
-			baseOverride = inferredBase
+	cls := ClassifyDetailed(kind, value, service, in.Context, in.SourceURL)
+	if provider != "" {
+		if p, ok := ProviderByID(provider); ok {
+			cls = classificationFor(p, kind, strings.ToLower(strings.Join([]string{service, in.Context, in.SourceURL}, " ")), "manual", 1.0, "")
+		} else {
+			cls.ProviderID, cls.ProviderName = provider, provider
+			cls.MatchedBy, cls.Confidence = "manual", 1.0
 		}
+	} else {
+		provider = cls.ProviderID
 	}
 	if provider == "" {
 		provider = "unknown"
+		cls.ProviderID = provider
+	}
+	if baseOverride != "" {
+		cls.BaseOverride = baseOverride
+		cls.Base = baseOverride
+	} else if cls.BaseOverride != "" {
+		baseOverride = cls.BaseOverride
 	}
 	if kind == "" {
 		kind = KindOther
+	}
+	if in.PClass != "" {
+		cls.PClass = in.PClass
+	}
+	if in.ProviderName != "" {
+		cls.ProviderName = in.ProviderName
+	}
+	if in.Variant != "" {
+		cls.VariantID, cls.VariantLabel = in.Variant, in.VariantLabel
+	}
+	if in.ServiceFamily != "" {
+		cls.ServiceFamily = in.ServiceFamily
+	}
+	if in.Protocol != "" {
+		cls.Protocol = in.Protocol
+	}
+	if in.QuotaKind != "" {
+		cls.QuotaKind = in.QuotaKind
+	}
+	if cls.PClass == "" {
+		cls.PClass = pclassForKind(kind)
+	}
+	if cls.ProviderName == "" {
+		cls.ProviderName = provider
+	}
+	if cls.QuotaKind == "" {
+		cls.QuotaKind = "none"
 	}
 
 	extra := map[string]any{}
@@ -121,6 +168,7 @@ func (s *Store) submitOne(ctx context.Context, in Input) (SubmitItem, error) {
 		hint = service
 	}
 	extraJSON, _ := json.Marshal(extra)
+	clsJSON, _ := json.Marshal(classificationMap(cls))
 	risk := strings.TrimSpace(in.Risk)
 	if risk == "" {
 		risk = "P2"
@@ -129,10 +177,13 @@ func (s *Store) submitOne(ctx context.Context, in Input) (SubmitItem, error) {
 		risk = defaultRisk(risk, "P1")
 	}
 	_, err = s.db.ExecContext(ctx, `
-INSERT INTO cred_entries(uid,kind,provider,service,secret_enc,secret_hint,fingerprint,status,risk,
+INSERT INTO cred_entries(uid,kind,pclass,provider,provider_name,variant,variant_label,service,service_family,protocol,
+  quota_kind,classification,secret_enc,secret_hint,fingerprint,status,risk,
   source_url,evidence_path,asset_id,task_id,conversation_id,context,extra,found_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,now())`,
-		uid, kind, provider, service, secretEnc, hint, fp, StatusUnverified, risk,
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,now())`,
+		uid, kind, cls.PClass, provider, cls.ProviderName, cls.VariantID, cls.VariantLabel,
+		service, cls.ServiceFamily, cls.Protocol, cls.QuotaKind, clsJSON,
+		secretEnc, hint, fp, StatusUnverified, risk,
 		strings.TrimSpace(in.SourceURL), strings.TrimSpace(in.EvidencePath),
 		nullInt(in.AssetID), nullInt(in.TaskID), nullInt(in.ConversationID),
 		strings.TrimSpace(in.Context), extraJSON)
@@ -141,6 +192,16 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,now())`,
 	}
 	return SubmitItem{UID: uid, Kind: kind, Provider: provider, Masked: maskSecret(value),
 		Status: StatusUnverified, Result: "inserted"}, nil
+}
+
+func classificationMap(c Classification) map[string]any {
+	return map[string]any{
+		"provider": c.ProviderID, "provider_name": c.ProviderName, "pclass": c.PClass,
+		"variant": c.VariantID, "variant_label": c.VariantLabel, "style": c.Style,
+		"base": c.Base, "model": c.Model, "quota_kind": c.QuotaKind, "avail": c.Avail,
+		"matched_by": c.MatchedBy, "confidence": c.Confidence, "domain": c.Domain,
+		"service_family": c.ServiceFamily,
+	}
 }
 
 func (s *Store) addSource(ctx context.Context, uid, sourceURL, evidence, note string) error {
@@ -221,6 +282,27 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Entry, int64, error) {
 	if strings.TrimSpace(f.Provider) != "" {
 		where = append(where, add("c.provider = $%d", strings.TrimSpace(f.Provider)))
 	}
+	if strings.TrimSpace(f.PClass) != "" {
+		where = append(where, add("c.pclass = $%d", strings.TrimSpace(f.PClass)))
+	}
+	if strings.TrimSpace(f.Variant) != "" {
+		where = append(where, add("c.variant = $%d", strings.TrimSpace(f.Variant)))
+	}
+	if strings.TrimSpace(f.ServiceFamily) != "" {
+		where = append(where, add("c.service_family = $%d", strings.TrimSpace(f.ServiceFamily)))
+	}
+	if strings.TrimSpace(f.Protocol) != "" {
+		where = append(where, add("c.protocol = $%d", strings.TrimSpace(f.Protocol)))
+	}
+	if strings.TrimSpace(f.Risk) != "" {
+		where = append(where, add("c.risk = $%d", strings.TrimSpace(f.Risk)))
+	}
+	if f.QuotaSupported {
+		where = append(where, "c.quota_kind <> 'none'")
+	}
+	if f.Manual {
+		where = append(where, "c.manual_status <> ''")
+	}
 	if strings.TrimSpace(f.Status) != "" {
 		where = append(where, add("c.status = $%d", strings.TrimSpace(f.Status)))
 	}
@@ -231,7 +313,7 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Entry, int64, error) {
 		like := "%" + q + "%"
 		idx := len(args) + 1
 		args = append(args, like)
-		where = append(where, fmt.Sprintf("(c.service ILIKE $%d OR c.provider ILIKE $%d OR c.source_url ILIKE $%d OR c.context ILIKE $%d)", idx, idx, idx, idx))
+		where = append(where, fmt.Sprintf("(c.service ILIKE $%d OR c.provider ILIKE $%d OR c.provider_name ILIKE $%d OR c.service_family ILIKE $%d OR c.source_url ILIKE $%d OR c.context ILIKE $%d)", idx, idx, idx, idx, idx, idx))
 	}
 	clause := ""
 	if len(where) > 0 {
@@ -243,14 +325,12 @@ func (s *Store) List(ctx context.Context, f Filter) ([]Entry, int64, error) {
 	}
 	args = append(args, f.Limit, f.Offset)
 	rows, err := s.db.QueryContext(ctx, `
-SELECT c.id,c.uid,c.kind,c.provider,c.service,c.secret_hint,c.status,c.status_detail,c.quota,c.risk,
-       c.source_url,c.evidence_path,COALESCE(c.asset_id,0),COALESCE(c.task_id,0),COALESCE(c.conversation_id,0),
-       c.context,c.extra,c.found_at,c.checked_at,c.archived,
-       COALESCE(p.protocol,''),COALESCE(p.server,''),COALESCE(p.port,0),COALESCE(p.status,''),
-       COALESCE(p.delay_ms,0),COALESCE(p.exit_ip,''),COALESCE(p.exit_country,''),COALESCE(p.message,''),p.checked_at
+SELECT `+entrySelectCols+`
 FROM cred_entries c
 LEFT JOIN proxy_nodes p ON p.cred_id=c.id`+clause+`
-ORDER BY c.found_at DESC, c.id DESC LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
+ORDER BY CASE c.pclass WHEN 'key' THEN 0 WHEN 'oauth' THEN 1 WHEN 'relay' THEN 2 WHEN 'proxy' THEN 3 ELSE 4 END,
+         CASE WHEN c.provider='' OR c.provider='unknown' THEN 1 ELSE 0 END,
+         c.found_at DESC, c.id DESC LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -269,11 +349,7 @@ ORDER BY c.found_at DESC, c.id DESC LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`
 // Get returns one masked entry and its sources.
 func (s *Store) Get(ctx context.Context, uid string) (*Entry, []Source, error) {
 	row := s.db.QueryRowContext(ctx, `
-SELECT c.id,c.uid,c.kind,c.provider,c.service,c.secret_hint,c.status,c.status_detail,c.quota,c.risk,
-       c.source_url,c.evidence_path,COALESCE(c.asset_id,0),COALESCE(c.task_id,0),COALESCE(c.conversation_id,0),
-       c.context,c.extra,c.found_at,c.checked_at,c.archived,
-       COALESCE(p.protocol,''),COALESCE(p.server,''),COALESCE(p.port,0),COALESCE(p.status,''),
-       COALESCE(p.delay_ms,0),COALESCE(p.exit_ip,''),COALESCE(p.exit_country,''),COALESCE(p.message,''),p.checked_at
+SELECT `+entrySelectCols+`
 FROM cred_entries c LEFT JOIN proxy_nodes p ON p.cred_id=c.id WHERE c.uid=$1`, uid)
 	e, err := scanEntry(row)
 	if err != nil {
@@ -372,10 +448,278 @@ func (s *Store) UpdateVerification(ctx context.Context, uid, status, detail stri
 	return err
 }
 
+// SaveProbe persists a verification snapshot and its history row.
+func (s *Store) SaveProbe(ctx context.Context, r VerifyResult, source string) error {
+	if source == "" {
+		source = "verify"
+	}
+	q, _ := json.Marshal(r.Quota)
+	if len(q) == 0 {
+		q = []byte("{}")
+	}
+	now := time.Now()
+	next := now.Add(24 * time.Hour)
+	switch r.Status {
+	case StatusNoBalance, StatusRateLimited:
+		next = now.Add(time.Hour)
+	case StatusUnknown:
+		next = now.Add(15 * time.Minute)
+	case StatusUnsupported:
+		next = now.Add(24 * time.Hour)
+	}
+	_, err := s.db.ExecContext(ctx, `
+UPDATE cred_entries SET status=$2,status_detail=$3,quota=$4,quota_kind=$5,provider_name=$6,
+ pclass=$7,variant=$8,variant_label=$9,checked_at=now(),updated_at=now(),
+ fail_count=CASE WHEN $2 IN ('unknown','unsupported') THEN fail_count+1 ELSE 0 END,
+ next_probe_at=$10
+WHERE uid=$1`, r.UID, r.Status, r.Detail, q, r.QuotaKind, r.ProviderName,
+		r.PClass, r.Variant, r.VariantLabel, next)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+INSERT INTO cred_probes(uid,ts,mode,status,http,ms,summary,pclass,provider,variant,quota_kind,quota,source)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		r.UID, r.CheckedAt, "verify", r.Status, r.HTTPStatus, int(r.ElapsedMS), r.Detail,
+		r.PClass, r.Provider, r.Variant, r.QuotaKind, q, source)
+	return err
+}
+
+// Probes returns the verification history for one credential.
+func (s *Store) Probes(ctx context.Context, uid string, limit int) ([]Probe, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id,uid,ts,mode,status,http,ms,summary,pclass,provider,variant,quota_kind,quota,source
+FROM cred_probes WHERE uid=$1 ORDER BY ts DESC, id DESC LIMIT $2`, uid, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Probe, 0)
+	for rows.Next() {
+		var p Probe
+		var quota []byte
+		if err := rows.Scan(&p.ID, &p.UID, &p.TS, &p.Mode, &p.Status, &p.HTTP, &p.MS, &p.Summary,
+			&p.PClass, &p.Provider, &p.Variant, &p.QuotaKind, &quota, &p.Source); err != nil {
+			return nil, err
+		}
+		if len(quota) > 0 {
+			_ = json.Unmarshal(quota, &p.Quota)
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// SetManualStatus overrides the displayed availability. Empty clears it.
+func (s *Store) SetManualStatus(ctx context.Context, uid, status string) error {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		_, err := s.db.ExecContext(ctx, `UPDATE cred_entries SET manual_status='',manual_status_at=NULL,updated_at=now() WHERE uid=$1`, uid)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE cred_entries SET manual_status=$2,manual_status_at=now(),updated_at=now() WHERE uid=$1`, uid, status)
+	return err
+}
+
+// SetVariant changes the provider sub-form and resets the live verdict.
+func (s *Store) SetVariant(ctx context.Context, uid, variant, baseURL string) error {
+	label := variant
+	base := strings.TrimSpace(baseURL)
+	var providerID string
+	_ = s.db.QueryRowContext(ctx, `SELECT provider FROM cred_entries WHERE uid=$1`, uid).Scan(&providerID)
+	if p, ok := ProviderByID(providerID); ok {
+		for _, v := range p.Variants {
+			if v.ID == variant {
+				label = v.Label
+				if base == "" {
+					base = v.Base
+				}
+				break
+			}
+		}
+	}
+	if variant == "" {
+		label = ""
+	}
+	_, err := s.db.ExecContext(ctx, `
+UPDATE cred_entries SET variant=$2,variant_label=$3,status='unverified',status_detail='',
+ checked_at=NULL,updated_at=now(),
+ extra=CASE WHEN $4='' THEN extra ELSE jsonb_set(extra,'{base_url}',to_jsonb($4::text),true) END
+WHERE uid=$1`, uid, variant, label, base)
+	return err
+}
+
 // Archive hides an entry without deleting its evidence.
 func (s *Store) Archive(ctx context.Context, uid string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE cred_entries SET archived=true,status=$2,updated_at=now() WHERE uid=$1`, uid, StatusArchived)
 	return err
+}
+
+// Facets returns the fine-grained classification dashboard.
+func (s *Store) Facets(ctx context.Context) (Facets, error) {
+	var f Facets
+	err := s.db.QueryRowContext(ctx, `
+SELECT count(*),
+       count(*) FILTER (WHERE pclass='key'),
+       count(*) FILTER (WHERE pclass='oauth'),
+       count(*) FILTER (WHERE status='valid'),
+       count(*) FILTER (WHERE status IN ('no_balance','rate_limited')),
+       count(*) FILTER (WHERE status='invalid'),
+       count(*) FILTER (WHERE status='unverified'),
+       count(*) FILTER (WHERE checked_at IS NOT NULL),
+       count(*) FILTER (WHERE quota_kind <> 'none'),
+       count(*) FILTER (WHERE kind IN ('proxy_node','proxy_subscription') AND status='valid')
+FROM cred_entries WHERE archived=false`).Scan(&f.Total, &f.LLMKey, &f.OAuth, &f.Valid, &f.Warn,
+		&f.Invalid, &f.Unverified, &f.Probed, &f.QuotaSupp, &f.ProxyAlive)
+	if err != nil {
+		return f, err
+	}
+	group := func(sqlText string, label bool) ([]FacetItem, error) {
+		rows, err := s.db.QueryContext(ctx, sqlText)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		out := make([]FacetItem, 0)
+		for rows.Next() {
+			var it FacetItem
+			if label {
+				if err := rows.Scan(&it.Value, &it.ProviderName, &it.PClass, &it.N); err != nil {
+					return nil, err
+				}
+			} else {
+				if err := rows.Scan(&it.Value, &it.N); err != nil {
+					return nil, err
+				}
+			}
+			out = append(out, it)
+		}
+		return out, rows.Err()
+	}
+	if f.ByPClass, err = group(`SELECT pclass,count(*) FROM cred_entries WHERE archived=false GROUP BY pclass ORDER BY count(*) DESC`, false); err != nil {
+		return f, err
+	}
+	if f.ByProvider, err = group(`SELECT provider,coalesce(max(provider_name),''),coalesce(max(pclass),''),count(*)
+FROM cred_entries WHERE archived=false GROUP BY provider ORDER BY count(*) DESC`, true); err != nil {
+		return f, err
+	}
+	// by_variant needs three text columns plus count; reuse a custom scan.
+	{
+		rows, err := s.db.QueryContext(ctx, `SELECT provider,variant,coalesce(max(variant_label),''),count(*)
+FROM cred_entries WHERE archived=false AND variant<>'' GROUP BY provider,variant ORDER BY count(*) DESC`)
+		if err != nil {
+			return f, err
+		}
+		for rows.Next() {
+			var it FacetItem
+			if err := rows.Scan(&it.Value, &it.Label, &it.VariantLabel, &it.N); err != nil {
+				rows.Close()
+				return f, err
+			}
+			it.ProviderName = it.Value
+			it.Value = it.Value + ":" + it.Label
+			it.Label = it.VariantLabel
+			f.ByVariant = append(f.ByVariant, it)
+		}
+		rows.Close()
+	}
+	if f.ByStatus, err = group(`SELECT status,count(*) FROM cred_entries WHERE archived=false GROUP BY status ORDER BY count(*) DESC`, false); err != nil {
+		return f, err
+	}
+	if f.ByRisk, err = group(`SELECT risk,count(*) FROM cred_entries WHERE archived=false GROUP BY risk ORDER BY count(*) DESC`, false); err != nil {
+		return f, err
+	}
+	if f.ByService, err = group(`SELECT service_family,count(*) FROM cred_entries WHERE archived=false AND service_family<>'' GROUP BY service_family ORDER BY count(*) DESC LIMIT 30`, false); err != nil {
+		return f, err
+	}
+	if f.ByProtocol, err = group(`SELECT protocol,count(*) FROM cred_entries WHERE archived=false AND protocol<>'' GROUP BY protocol ORDER BY count(*) DESC LIMIT 30`, false); err != nil {
+		return f, err
+	}
+	return f, nil
+}
+
+// Reclassify recomputes pclass/provider/variant/classification for every entry.
+// It does not change status or verified history.
+func (s *Store) Reclassify(ctx context.Context) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT c.uid,c.kind,c.provider,c.service,c.source_url,c.context,c.secret_enc,COALESCE(p.protocol,'')
+FROM cred_entries c LEFT JOIN proxy_nodes p ON p.cred_id=c.id
+WHERE c.archived=false`)
+	if err != nil {
+		return nil, err
+	}
+	type row struct {
+		uid, kind, provider, service, source, context, protocol string
+		enc                                                     []byte
+	}
+	var list []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.uid, &r.kind, &r.provider, &r.service, &r.source, &r.context, &r.enc, &r.protocol); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		list = append(list, r)
+	}
+	rows.Close()
+	stats := map[string]int{}
+	for _, r := range list {
+		raw, err := decrypt(s.key, r.enc)
+		if err != nil {
+			continue
+		}
+		cls := ClassifyDetailed(r.kind, string(raw), r.service, r.context, r.source)
+		if strings.HasPrefix(r.kind, "proxy") {
+			cls.ProviderID = "proxy"
+			cls.ProviderName = "代理节点"
+			cls.PClass = "proxy"
+			cls.Protocol = firstNonEmpty(r.protocol, cls.Protocol)
+			cls.ServiceFamily = firstNonEmpty(cls.Protocol, "proxy")
+			cls.QuotaKind = "none"
+			cls.VariantID = cls.Protocol
+			cls.VariantLabel = cls.Protocol
+		}
+		if cls.ProviderID == "" && r.provider != "" && r.provider != "unknown" {
+			cls.ProviderID = r.provider
+			cls.ProviderName = r.provider
+			cls.MatchedBy = "existing"
+			cls.Confidence = 0.5
+			if cls.PClass == "" {
+				cls.PClass = pclassForKind(r.kind)
+			}
+		}
+		if cls.ProviderID == "" {
+			cls.ProviderID = "unknown"
+			cls.ProviderName = "未识别"
+		}
+		if cls.ProviderName == "" || cls.ProviderName == cls.ProviderID {
+			if cls.ProviderID == "relay" {
+				cls.ProviderName = "中转 / 兼容网关"
+			} else {
+				cls.ProviderName = cls.ProviderID
+			}
+		}
+		if cls.PClass == "" {
+			cls.PClass = pclassForKind(r.kind)
+		}
+		if cls.QuotaKind == "" {
+			cls.QuotaKind = "none"
+		}
+		clsJSON, _ := json.Marshal(classificationMap(cls))
+		_, err = s.db.ExecContext(ctx, `
+UPDATE cred_entries SET pclass=$2,provider=$3,provider_name=$4,variant=$5,variant_label=$6,
+ service_family=$7,protocol=$8,quota_kind=$9,classification=$10,updated_at=now() WHERE uid=$1`,
+			r.uid, cls.PClass, cls.ProviderID, cls.ProviderName, cls.VariantID, cls.VariantLabel,
+			cls.ServiceFamily, cls.Protocol, cls.QuotaKind, clsJSON)
+		if err != nil {
+			return stats, err
+		}
+		stats[cls.PClass]++
+	}
+	return stats, nil
 }
 
 // Stats aggregates the dashboard.
@@ -472,20 +816,12 @@ func (s *Store) ProxyRows(ctx context.Context, uids []string, limit int) ([]Entr
 		}
 		args = append(args, limit)
 		rows, err = s.db.QueryContext(ctx, `
-SELECT c.id,c.uid,c.kind,c.provider,c.service,c.secret_hint,c.status,c.status_detail,c.quota,c.risk,
-       c.source_url,c.evidence_path,COALESCE(c.asset_id,0),COALESCE(c.task_id,0),COALESCE(c.conversation_id,0),
-       c.context,c.extra,c.found_at,c.checked_at,c.archived,
-       COALESCE(p.protocol,''),COALESCE(p.server,''),COALESCE(p.port,0),COALESCE(p.status,''),
-       COALESCE(p.delay_ms,0),COALESCE(p.exit_ip,''),COALESCE(p.exit_country,''),COALESCE(p.message,''),p.checked_at
+SELECT `+entrySelectCols+`
 FROM cred_entries c LEFT JOIN proxy_nodes p ON p.cred_id=c.id
 WHERE c.archived=false AND c.kind='proxy_node' AND c.uid IN (`+strings.Join(marks, ",")+`) ORDER BY c.id LIMIT $`+fmt.Sprint(len(args)), args...)
 	} else {
 		rows, err = s.db.QueryContext(ctx, `
-SELECT c.id,c.uid,c.kind,c.provider,c.service,c.secret_hint,c.status,c.status_detail,c.quota,c.risk,
-       c.source_url,c.evidence_path,COALESCE(c.asset_id,0),COALESCE(c.task_id,0),COALESCE(c.conversation_id,0),
-       c.context,c.extra,c.found_at,c.checked_at,c.archived,
-       COALESCE(p.protocol,''),COALESCE(p.server,''),COALESCE(p.port,0),COALESCE(p.status,''),
-       COALESCE(p.delay_ms,0),COALESCE(p.exit_ip,''),COALESCE(p.exit_country,''),COALESCE(p.message,''),p.checked_at
+SELECT `+entrySelectCols+`
 FROM cred_entries c LEFT JOIN proxy_nodes p ON p.cred_id=c.id
 WHERE c.archived=false AND c.kind='proxy_node' ORDER BY c.id DESC LIMIT $1`, limit)
 	}
@@ -531,14 +867,16 @@ type rowScanner interface {
 
 func scanEntry(sc rowScanner) (Entry, error) {
 	var e Entry
-	var quota, extra []byte
-	var checked, proxyChecked sql.NullTime
+	var quota, extra, cls []byte
+	var checked, manualAt, nextAt, proxyChecked sql.NullTime
 	var assetID, taskID, convID int64
 	var pProto, pServer, pStatus, pExitIP, pExitCountry, pMessage string
 	var pPort, pDelay int
-	err := sc.Scan(&e.ID, &e.UID, &e.Kind, &e.Provider, &e.Service, &e.Masked, &e.Status, &e.StatusDetail,
-		&quota, &e.Risk, &e.SourceURL, &e.EvidencePath, &assetID, &taskID, &convID,
-		&e.Context, &extra, &e.FoundAt, &checked, &e.Archived,
+	err := sc.Scan(&e.ID, &e.UID, &e.Kind, &e.PClass, &e.Provider, &e.ProviderName, &e.Variant, &e.VariantLabel,
+		&e.Service, &e.ServiceFamily, &e.Protocol, &e.Masked, &e.Status, &e.StatusDetail,
+		&quota, &e.QuotaKind, &e.Risk, &e.ManualStatus, &manualAt, &cls,
+		&e.SourceURL, &e.EvidencePath, &assetID, &taskID, &convID,
+		&e.Context, &extra, &e.FoundAt, &checked, &e.FailCount, &nextAt, &e.Archived,
 		&pProto, &pServer, &pPort, &pStatus, &pDelay, &pExitIP, &pExitCountry, &pMessage, &proxyChecked)
 	if err != nil {
 		return e, err
@@ -547,11 +885,20 @@ func scanEntry(sc rowScanner) (Entry, error) {
 	if checked.Valid {
 		e.CheckedAt = &checked.Time
 	}
+	if manualAt.Valid {
+		e.ManualStatusAt = &manualAt.Time
+	}
+	if nextAt.Valid {
+		e.NextProbeAt = &nextAt.Time
+	}
 	if len(quota) > 0 {
 		_ = json.Unmarshal(quota, &e.Quota)
 	}
 	if len(extra) > 0 {
 		_ = json.Unmarshal(extra, &e.Extra)
+	}
+	if len(cls) > 0 {
+		_ = json.Unmarshal(cls, &e.Classification)
 	}
 	if pProto != "" || pServer != "" {
 		e.Proxy = &ProxyMeta{Protocol: pProto, Server: pServer, Port: pPort, Status: pStatus,

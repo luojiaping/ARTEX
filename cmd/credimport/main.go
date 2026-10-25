@@ -203,6 +203,12 @@ func mapStatus(verified, desc string) (string, string) {
 	case "❌":
 		return credhunt.StatusInvalid, desc
 	case "⚠️":
+		if strings.Contains(desc, "余额") || strings.Contains(desc, "欠费") || strings.Contains(desc, "用尽") {
+			return credhunt.StatusNoBalance, desc
+		}
+		if strings.Contains(desc, "限流") || strings.Contains(desc, "429") {
+			return credhunt.StatusRateLimited, desc
+		}
 		return credhunt.StatusUnknown, desc
 	case "❓", "":
 		return credhunt.StatusUnverified, desc

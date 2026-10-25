@@ -48,7 +48,10 @@ import type {
   FindingTrafficDetail,
   FofaAccount,
   CredentialEntry,
+  CredentialFacets,
   CredentialList,
+  CredentialProbe,
+  CredentialProvider,
   CredentialSource,
   CredentialStats,
   CredentialVerifyResult,
@@ -826,20 +829,34 @@ export const api = {
   // ---- 凭据猎手台账 ----
   credentials: (params?: {
     kind?: string;
+    pclass?: string;
     provider?: string;
+    variant?: string;
+    service_family?: string;
+    protocol?: string;
     status?: string;
+    risk?: string;
     q?: string;
     task_id?: number;
+    quota_supported?: boolean;
+    manual?: boolean;
     limit?: number;
     offset?: number;
     archived?: boolean;
   }) => {
     const p = new URLSearchParams();
     if (params?.kind) p.set("kind", params.kind);
+    if (params?.pclass) p.set("pclass", params.pclass);
     if (params?.provider) p.set("provider", params.provider);
+    if (params?.variant) p.set("variant", params.variant);
+    if (params?.service_family) p.set("service_family", params.service_family);
+    if (params?.protocol) p.set("protocol", params.protocol);
     if (params?.status) p.set("status", params.status);
+    if (params?.risk) p.set("risk", params.risk);
     if (params?.q) p.set("q", params.q);
     if (params?.task_id) p.set("task_id", String(params.task_id));
+    if (params?.quota_supported) p.set("quota_supported", "1");
+    if (params?.manual) p.set("manual", "1");
     if (params?.limit) p.set("limit", String(params.limit));
     if (params?.offset) p.set("offset", String(params.offset));
     if (params?.archived) p.set("archived", "1");
@@ -847,7 +864,19 @@ export const api = {
     return get<CredentialList>(`/credentials${qs ? `?${qs}` : ""}`);
   },
   credential: (uid: string) =>
-    get<{ entry: CredentialEntry; sources: CredentialSource[] }>(`/credentials/${encodeURIComponent(uid)}`),
+    get<{ entry: CredentialEntry; sources: CredentialSource[]; probes: CredentialProbe[] }>(
+      `/credentials/${encodeURIComponent(uid)}`,
+    ),
+  credentialFacets: () => get<CredentialFacets>(`/credentials/facets`),
+  credentialProviders: () => get<{ items: CredentialProvider[] }>(`/credentials/providers`),
+  classifyCredential: (body: { kind?: string; value: string; service?: string; context?: string; source_url?: string }) =>
+    post<Record<string, unknown>>(`/credentials/classify`, body),
+  setCredentialStatus: (uid: string, status: string) =>
+    post<CredentialEntry>(`/credentials/${encodeURIComponent(uid)}/status`, { status }),
+  setCredentialVariant: (uid: string, variant: string, base_url?: string) =>
+    post<CredentialEntry>(`/credentials/${encodeURIComponent(uid)}/variant`, { variant, base_url }),
+  credentialProbes: (uid: string, limit = 50) =>
+    get<{ items: CredentialProbe[] }>(`/credentials/${encodeURIComponent(uid)}/probes?limit=${limit}`),
   credentialStats: () => get<CredentialStats>(`/credentials/stats`),
   revealCredential: (uid: string) =>
     post<{ uid: string; value: string }>(`/credentials/${encodeURIComponent(uid)}/reveal`, { confirm: true }),
