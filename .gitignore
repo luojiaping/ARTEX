@@ -25,14 +25,21 @@ web/next-env.d.ts
 *.swo
 
 # docs
-/docs/
+/docs/*
+!/docs/架构复核与演进设计.md
+!/docs/问题驱动的实验搜索架构.md
+!/docs/创新路线/
+/docs/创新路线/*
+!/docs/创新路线/*.md
 
 # os
 .DS_Store
 Thumbs.db
 
-# claude code local state
+# local development state
 .claude/
+/.codex/
+/sidequestion/validation-*.json
 
 # 内嵌前端的单二进制产物
 /artex

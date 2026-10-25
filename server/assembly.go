@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Autumn-27/artex/agent"
@@ -211,6 +212,19 @@ func seedPrompts(pg *db.DB) {
 // and缺省入参 get injected. MCP/skill/host tools have no row and pass through.
 func wireTools(pg *db.DB, domainReg map[string]actool.CoreTool) {
 	agent.FindingTrafficBindingEnabled = func() bool { return pg.GetBool(settingAgentTrafficBinding, false) }
+	// FOFA credentials are read per call (not cached in the manager) so editing
+	// the key in 系统配置 takes effect on the next tool call without a restart.
+	agent.FofaKeyProvider = func() (key, baseURL string, ratePerSec float64) {
+		key, _, _ = pg.GetSetting(settingFOFAKey)
+		baseURL, _, _ = pg.GetSetting(settingFOFABaseURL)
+		ratePerSec = defaultFOFARate
+		if v, ok, _ := pg.GetSetting(settingFOFARate); ok {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil && f > 0 {
+				ratePerSec = f
+			}
+		}
+		return strings.TrimSpace(key), strings.TrimSpace(baseURL), ratePerSec
+	}
 	// Seed the built-in domain tools (first-insert only; DO NOTHING preserves edits).
 	// No startup prune: rows we didn't seed are left alone so future user-defined
 	// custom tools (system=false, added via the UI) survive restarts.

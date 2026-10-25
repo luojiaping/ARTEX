@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/credhunt"
 	pgdb "github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/enrich"
 	"github.com/Autumn-27/artex/guard"
@@ -219,6 +220,7 @@ type Manager struct {
 	dir         string
 	pg          *pgdb.DB
 	assets      *pgdb.AssetStore
+	cred        *credhunt.Service
 	traffic     *traffic.Traffic       // process-wide recording proxy (may be nil)
 	enrich      *enrich.Engine         // engine-side asset auto-completion (DNS/HTTP)
 	interceptor *intercept.Interceptor // user-configured tool-call interception rules
@@ -285,6 +287,13 @@ const (
 	// defaultConcurrencyLimit is the simultaneous-running-task cap when the feature
 	// is enabled but no explicit limit was saved.
 	defaultConcurrencyLimit = 5
+
+	// FOFA 网络空间测绘。key 只存库、不回显；base_url 留空用官方 https://fofa.info；
+	// rate 是全局请求速率（req/s），所有 agent 共享。
+	settingFOFAKey     = "fofa_key"
+	settingFOFABaseURL = "fofa_base_url"
+	settingFOFARate    = "fofa_rate_limit"
+	defaultFOFARate    = 1.5
 )
 
 // ConcurrencyLimit returns whether the simultaneous-running-task cap is enabled and
@@ -374,6 +383,11 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 		log.Printf("[llmusage] create table: %v", err)
 	}
 	m := &Manager{dir: dir, pg: pg, assets: pg.Assets(), tasks: map[string]*Task{}, interceptor: intercept.New(pg)}
+	if credSvc, cerr := credhunt.NewService(pg, dir); cerr != nil {
+		log.Printf("[credhunt] disabled: %v", cerr)
+	} else {
+		m.cred = credSvc
+	}
 	if proxyAddr != "" {
 		tr, err := traffic.Open(filepath.Join(dir, "traffic"), proxyAddr)
 		if err != nil {
@@ -734,6 +748,7 @@ func (m *Manager) HostTools() []actool.CoreTool {
 }
 
 func (m *Manager) Assets() *pgdb.AssetStore  { return m.assets }
+func (m *Manager) Cred() *credhunt.Service   { return m.cred }
 func (m *Manager) PG() *pgdb.DB              { return m.pg }
 func (m *Manager) Traffic() *traffic.Traffic { return m.traffic }
 

@@ -1,0 +1,67 @@
+# FOFA 查询清单 · 开放目录 / 临时文件服务器
+# 用法：整行复制查询行（跳过 # 注释）粘贴到 FOFA 搜索框；size 为 fofa_search 单页条数建议。
+# 规模是量级估计，非实测；标「需 stats」的先跑 fofa_stats 再定 size。
+# 记法：= 包含匹配，*= 模糊（* / ? 通配），!= 排除，&& / || 组合（混用加括号）。
+
+# OD-01 基线：Apache/nginx/Caddy 目录索引，覆盖子目录 | 规模 1e6+ | 误报 中 | size 50
+title="Index of /"
+
+# OD-02 根目录精确页：body 里的一级标题，只命中根，不含 /sub/ | 规模 1e6 | 误报 中 | size 50
+body="<h1>Index of /</h1>"
+
+# OD-03 Python http.server：Server 响应头 | 规模 1e4-1e5 | 误报 低 | size 100
+header="SimpleHTTP"
+
+# OD-04 Python http.server：目录页标题 | 规模 1e4-1e5 | 误报 低 | size 100
+body="Directory listing for /"
+
+# OD-05 nginx autoindex：标题 + Server 双条件 | 规模 1e5-1e6 | 误报 低 | size 100
+title="Index of /" && header="Server: nginx"
+
+# OD-06 Apache autoindex | 规模 需 stats | 误报 中 | size 100
+title="Index of /" && header="Server: Apache"
+
+# OD-07 IIS 目录列表：父目录链接是 IIS 专有写法 | 规模 1e3-1e4 | 误报 低 | size 50
+body="[To Parent Directory]"
+
+# OD-08 Apache 默认索引页：父目录 + 修改时间两列 | 规模 1e5 | 误报 中 | size 100
+body="Parent Directory" && body="Last modified"
+
+# OD-09 目录页里出现 .env（配置/凭据） | 规模 1e3-1e4 | 误报 中 | size 50
+title="Index of /" && body=".env"
+
+# OD-10 目录页里出现 SSH 私钥 | 规模 1e2-1e3 | 误报 低 | size 50
+title="Index of /" && body="id_rsa"
+
+# OD-11 直接暴露的 Laravel .env 内容 | 规模 需 stats | 误报 中 | size 50
+body="APP_KEY=" && body="DB_PASSWORD="
+
+# OD-12 直接暴露的 OpenSSH 私钥 | 规模 1e3 | 误报 低 | size 50
+body="-----BEGIN OPENSSH PRIVATE KEY-----"
+
+# OD-13 目录页里出现 SQL 导出 | 规模 1e3-1e4 | 误报 中 | size 50
+title="Index of /" && body=".sql"
+
+# OD-14 目录页里出现压缩包（工具包/备份） | 规模 1e5+ | 误报 高 | size 50
+title="Index of /" && body=".zip"
+
+# OD-15 目录页里出现备份文件 | 规模 1e3-1e4 | 误报 中 | size 50
+title="Index of /" && body=".bak"
+
+# OD-16 h5ai 索引器 | 规模 1e3 | 误报 低 | size 50
+body="Powered by h5ai"
+
+# OD-17 Directory Lister（PHP 目录程序） | 规模 需 stats | 误报 低 | size 50
+title="Directory Lister"
+
+# OD-18 File Browser 管理端 | 规模 需 stats | 误报 中 | size 50
+body="File Browser" && body="filebrowser"
+
+# OD-19 只看国内、近一年更新的目录页 | 规模 需 stats | 误报 中 | size 50
+title="Index of /" && country="CN" && after="2025-10-01"
+
+# OD-20 排除 Cloudflare 统一错误页 | 规模 需 stats | 误报 低 | size 50
+title="Index of /" && header!="Server: cloudflare"
+
+# OD-21 .git 目录暴露（源码/历史凭据） | 规模 1e3-1e4 | 误报 中 | size 50
+body="Index of /" && body=".git"

@@ -45,6 +45,14 @@ func parseFinding(n *db.Node) findingView {
 
 var sevRank = map[string]int{"critical": 0, "high": 1, "medium": 2, "low": 3, "": 4}
 
+// Unknown severities share the unclassified rank, matching the DB's ordering.
+func severityRank(severity string) int {
+	if rank, ok := sevRank[severity]; ok {
+		return rank
+	}
+	return sevRank[""]
+}
+
 // Markdown renders the report.
 func Markdown(in Input) string {
 	var b strings.Builder
@@ -78,12 +86,13 @@ func Markdown(in Input) string {
 		for _, n := range in.Findings {
 			fs = append(fs, parseFinding(n))
 		}
-		sort.SliceStable(fs, func(i, j int) bool { return sevRank[fs[i].Severity] < sevRank[fs[j].Severity] })
+		sort.SliceStable(fs, func(i, j int) bool { return severityRank(fs[i].Severity) < severityRank(fs[j].Severity) })
 		for i, f := range fs {
 			fmt.Fprintf(&b, "### %d. [%s] %s\n\n", i+1, strings.ToUpper(nz(f.Severity, "info")), nz(f.Name, nz(f.VulnClass, "未分类")))
 			fmt.Fprintf(&b, "%s\n\n", nz(f.Summary, ""))
 			if f.PoC != "" {
-				fmt.Fprintf(&b, "**PoC / 证据：**\n\n```\n%s\n```\n\n", f.PoC)
+				fence := fenceFor(f.PoC)
+				fmt.Fprintf(&b, "**PoC / 证据：**\n\n%s\n%s\n%s\n\n", fence, f.PoC, fence)
 			}
 		}
 	}
@@ -96,4 +105,24 @@ func nz(s, d string) string {
 		return d
 	}
 	return s
+}
+
+// fenceFor 返回一段严格长于 s 内任何反引号连续串的围栏（CommonMark 加固写法），
+// 保证不可信的证据/PoC 文本无法提前闭合代码块、向报告注入 Markdown 结构。
+func fenceFor(s string) string {
+	maxRun, n := 2, 0
+	for _, c := range s {
+		if c == '`' {
+			n++
+			continue
+		}
+		if n > maxRun {
+			maxRun = n
+		}
+		n = 0
+	}
+	if n > maxRun {
+		maxRun = n
+	}
+	return strings.Repeat("`", maxRun+1)
 }

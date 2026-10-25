@@ -2,20 +2,38 @@
 
 # ARTEX
 
-AI 自主渗透测试系统（Go 后端 + Next.js 前端）
+面向企业攻击面的自主渗透测试智能体（Go 后端 + Next.js 前端）
 
-
-🌐 **在线 Demo（模拟数据）**： [https://artex-demo.mhtsec.com](https://artex-demo.mhtsec.com)
-
-📦 **该仓库为ARTEX最后一个版本纯源码备份。原 Docker 镜像源 `autumn27/artex` 已失效，现由本仓库自维护镜像 `mianhuatang11/artex`（Docker Hub）；拉取失败时可 `docker compose build` 从纯源码本地构建，无任何外部预编译依赖。**
+🌐 **在线 Demo（模拟数据）**： <https://artex-demo.mhtsec.com>
 
 </div>
 
 ---
 
+## 项目背景
+
+**Artex Pro（企业版）/ ARTEX（开源版）** 是面向企业攻击面的自主渗透测试智能体，为微步 RedAgents 产品负责人的个人项目。
+
+- **Artex Pro（企业版）** 重点提升了安全管控能力：以工程化思路将自主智能体构建为一套完整的红队系统，不止能自主突破和发现漏洞，还能做到**全程可控、运行稳定、结果可追溯**。
+- **ARTEX（开源版）** 此前作为开源项目运营，于 **2026 年 9 月 3 日** 在百度安全「Agent+」攻防能力挑战赛中斩获**冠军**；后被攻击者恶意利用、引发国外多起大规模金融行业安全事件，已于 **2026 年 10 月 8 日** 宣布**正式转为闭源**。
+
+### 关于本仓库
+
+本仓库是 ARTEX 开源版闭源前**最后一个版本的纯源码备份**，后续由 **棉花糖**（[@mhtsec](https://github.com/mhtsec)，公众号 **棉花糖fans**）维护，欢迎参与共建：
+
+- 🐛 问题反馈 / 功能建议：[提交 Issue](https://github.com/mhtsec/ARTEX/issues)
+- 🛠 代码共建：欢迎提交 [Pull Request](https://github.com/mhtsec/ARTEX/pulls)
+- 💬 交流群：见文末 [交流与社区](#交流与社区)
+
+> 原 Docker 镜像源 `autumn27/artex` 已失效，现由本仓库自维护镜像 `mianhuatang11/artex`（Docker Hub）；拉取失败时可 `docker compose build` 从纯源码本地构建，无任何外部预编译依赖。
+>
+> 致谢原作者的开源贡献：原作者微信公众号为 **SecSentry**，原项目地址 [Autumn-27/ARTEX](https://github.com/Autumn-27/ARTEX)。
+
+---
+
 ## 截图预览
 
-> 完整交互见[在线 Demo](https://artex-demo.mhtsec.com)（纯前端 + Mock 数据，无需后端）。
+> 完整交互见[在线 Demo](https://artex-demo.mhtsec.com)。
 
 | 仪表盘（总览 / Token 消耗 / 活动流） | 任务列表 |
 | :---: | :---: |
@@ -29,10 +47,6 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 | :---: | :---: |
 | ![发现](screenshots/findings.png) | ![资产](screenshots/assets.png) |
 
-| 资产覆盖图（力导向布局 · 已测高亮 · 节点折叠展开） |
-| :---: |
-| ![资产覆盖图](screenshots/assets_test.png) |
-
 | 流量录制 | 人在环路对话 |
 | :---: | :---: |
 | ![流量](screenshots/traffic.png) | ![对话](screenshots/chat.png) |
@@ -45,14 +59,7 @@ AI 自主渗透测试系统（Go 后端 + Next.js 前端）
 | :---: | :---: |
 | ![拦截](screenshots/intercept.png) | ![日志](screenshots/logs.png) |
 
-
 ---
-
-## 审批记录详情
-
-全局「审批记录」、任务内「拦截审批」及对话中的审批卡片均支持展开查看详情。展示结构参考
-[AegisHook 的审批详情组件](https://github.com/RuoJi6/AegisHook/blob/main/web/src/components/CallDetail.vue)，沿用 ARTEX 的组件和主题：
-
 
 ## 资产同步（ScopeSentry）
 
@@ -81,7 +88,7 @@ cd ARTEX
 - **① 全部 Docker**：填一个 Postgres 密码（可回车随机）→ 自动写 `.env` → `docker compose up -d`。
 - **② 本地运行**：选数据库（连已有 / 用 Docker 起一个）→ 生成 `config.json` → `go` 编译内嵌单二进制 → 启动。
 
-装好后打开 **http://localhost:8787**（首次进入 `/setup` 设置管理员密码）。
+装好后打开 \*\*<http://localhost:8787\*\*（首次进入> `/setup` 设置管理员密码）。
 
 ### 方式二：Docker Compose（手动）
 
@@ -93,27 +100,27 @@ docker compose up -d          # 拉取 mianhuatang11/artex 镜像 + postgres
 # → http://localhost:8787
 ```
 
-> 原镜像源 `autumn27/artex` 已从 Docker Hub 删除，镜像现由本仓库自维护为 **`mianhuatang11/artex`**。
-> 镜像源不可用（或想自行改代码）时，本地从纯源码构建即可：`docker compose build && docker compose up -d`。
-> Dockerfile 为多阶段构建（前端静态导出 → Go 静态编译 → 运行镜像），默认走国内友好依赖源，可加 `--build-arg GOPROXY=... / --build-arg NPM_REGISTRY=...` 覆盖。
+> 原镜像源 `autumn27/artex` 已从 Docker Hub 删除，镜像现由本仓库自维护为 **`mianhuatang11/artex`**。  
+> 镜像源不可用（或想自行改代码）时，本地从纯源码构建即可：`docker compose build && docker compose up -d`。  
+> Dockerfile 为多阶段构建（前端静态导出 → Go 静态编译 → 运行镜像），默认走国内友好依赖源，可加 `--build-arg GOPROXY=... / --build-arg NPM_REGISTRY=...` 覆盖。正式镜像支持 `linux/amd64` 和 `linux/arm64`，Docker 会自动选择对应架构；固定版本可在 `.env` 设置 `ARTEX_TAG=v0.3.19`。
 
 镜像已含常用工具（ripgrep/curl/vim/npm/nmap…）；`./skills` 与 `./data` 以绑定挂载持久化。
 
-远程 MCP 可在系统设置中选择 `http`（Streamable HTTP）或 `sse`（旧版 SSE）。
-旧版 SSE 服务通常使用 `GET /sse` 建立事件流，再通过服务返回的
-`/message?sessionId=...` 接收 JSON-RPC 请求；配置时将 URL 填为 `/sse`，请求头按
+远程 MCP 可在系统设置中选择 `http`（Streamable HTTP）或 `sse`（旧版 SSE）。  
+旧版 SSE 服务通常使用 `GET /sse` 建立事件流，再通过服务返回的  
+`/message?sessionId=...` 接收 JSON-RPC 请求；配置时将 URL 填为 `/sse`，请求头按  
 `Authorization=Bearer <token>` 填写。
 
 ### 方式三：下载预编译二进制（Releases）
 
-到原仓库 [Releases](https://github.com/Autumn-27/ARTEX/releases) 下载对应平台的 zip（**本备份仓库不托管二进制**，若原 Releases 也失效请用方式二或方式四）：解压后得到 `artex` + `start.sh`（Windows 为 `start.bat`）+ `skills/` + `config.example.json`：
+到本仓库 [Releases](https://github.com/mhtsec/ARTEX/releases) 下载对应平台的 zip：解压后得到 `artex` + `start.sh`（Windows 为 `start.bat`）+ `skills/` + `config.example.json`：
 
 ```bash
 cp config.example.json config.json   # 填好 database 连接
 ./start.sh                           # → http://localhost:8787
 ```
 
-> 请用 `start.sh` / `start.bat` 启动，而不是直接跑 `./artex`。它是个守护脚本：程序退出后按退出码决定是否重新拉起，**页面上的[一键更新](#方式一页面一键更新推荐)靠它完成换装**。直接运行 `./artex` 时更新完就不会被拉起了。
+> 请用 `start.sh` / `start.bat` 启动，而不是直接跑 `./artex`。它是个守护脚本：程序退出后按退出码决定是否重新拉起，**页面上的[一键更新](#方式一页面一键更新推荐)靠它完成换装**。直接运行 `./artex` 时更新完就不会被拉起了。  
 > 后台常驻：`nohup ./start.sh >artex.log 2>&1 &`。
 
 ### 方式四：从源码编译单二进制
@@ -143,6 +150,12 @@ UPX 自解压二进制可能与部分 Linux 内核、虚拟化环境或安全策
 ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
 ./build.sh --target linux/amd64 --upx
 ```
+
+Docker 镜像随 Release 发布，使用同一份 `SHA256SUMS` 校验过的 Linux 二进制、启动脚本和 skills；两个架构分别在原生 runner 上完成 PostgreSQL、登录与配置持久化、内嵌网页、Chromium 和停止/重启检查，通过后才合并版本标签。`latest` 仅指向当前稳定 Release，补发历史版本不会将它回退。
+
+维护者需在仓库 Actions 配置变量 `DOCKERHUB_IMAGE=mianhuatang11/artex`，以及加密 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`。正常推送版本 tag 会自动发布；仅补发 Docker 镜像时，在 Actions 中手工运行 `docker-release` 并填写已有 Release 标签。任一架构构建或验证失败都不会更新 `latest`，按日志修复后重跑。
+
+本地从源码构建可用 `--build-arg ARTEX_BUILD_VERSION=v0.3.16` 写入版本；默认 `dev`。Playwright 工具版本固定在 Dockerfile 中，浏览器默认从官方 CDN 下载，需要镜像站时可指定 `--build-arg PLAYWRIGHT_DOWNLOAD_HOST=...`。排查镜像时可执行 `python3 scripts/smoke-docker.py <镜像> <版本号>`，检查只使用临时数据库和内部网络，不读取本地 `.env` 或连接真实目标。
 
 ---
 
@@ -180,7 +193,7 @@ cd ARTEX
 ```bash
 cd ARTEX
 git pull                       # 更新 compose / 脚本（可选）
-# 指定版本：在 .env 设 ARTEX_TAG=v0.2.0；不设则用 latest
+# 指定版本：在 .env 设 ARTEX_TAG=v0.3.19；不设则用 latest
 docker compose pull artex
 docker compose up -d artex     # 换新镜像重启 → 自动迁移 schema
 docker image prune -f          # 清理旧镜像（可选）
@@ -188,7 +201,7 @@ docker image prune -f          # 清理旧镜像（可选）
 
 ### 方式四：预编译二进制（Releases）
 
-到 [Releases](https://github.com/Autumn-27/ARTEX/releases) 下载新版本 zip，停掉旧进程后覆盖 `artex` 与 `skills/`（保留你的 `config.json` 与 `data/`），重启即可：
+到 [Releases](https://github.com/mhtsec/ARTEX/releases) 下载新版本 zip，停掉旧进程后覆盖 `artex` 与 `skills/`（保留你的 `config.json` 与 `data/`），重启即可：
 
 ```bash
 cp -r <解压目录>/skills ./ && cp <解压目录>/artex ./
@@ -221,12 +234,20 @@ CGO_ENABLED=0 go build -tags embedui -o artex ./cmd/artex
 }
 ```
 
-**LLM**：`export ANTHROPIC_API_KEY=sk-...`（或 `OPENAI_API_KEY`），也可在 UI 的「LLM 配置」页填写。
+**LLM**：`export ANTHROPIC_API_KEY=sk-...`（或 `OPENAI_API_KEY`），也可在 UI 的「LLM 配置」页填写。  
 可选：`ARTEX_LLM_PROVIDER` / `ARTEX_LLM_MODEL` / `ARTEX_LLM_BASE_URL` / `ARTEX_LLM_PROXY`。
 
 **并发**：每个任务的 work agent 数在「系统设置」里配置（默认 3）。
 
-**常用参数**：`./start.sh -addr :8787 -proxy :8788`（`-addr` 前端+API，`-proxy` 流量录制代理）。启动脚本会把参数原样透传给 `artex`。
+**常用参数**：`./start.sh -addr 127.0.0.1:8787 -proxy 127.0.0.1:8788`（`-addr` 前端+API，`-proxy` 流量录制代理）。启动脚本会把参数原样透传给 `artex`。
+
+### 认证与访问控制
+
+- 管理端口默认仅供本机访问：单二进制默认监听 `127.0.0.1:8787`，Docker Compose 也只向宿主机的该地址发布端口。远程访问请使用 SSH 隧道、VPN 或受控的 HTTPS 反向代理；已有部署需同步更新 Compose 的端口映射。
+- 升级到 v0.3.17 后需要重新登录。修改密码或使用密码重置脚本后，所有旧登录凭证失效；已经打开的活动流也会断开。跨实例或脚本重置会在活动流下一次校验时生效（约 2 秒）。
+- 认证请求每个直连来源每分钟最多 10 次，每个服务实例每分钟最多 60 次，同时最多进行 4 个密码处理请求。认证正文上限 4 KiB，须在 5 秒内读完，超时关闭连接并释放额度。超限返回 `429` 和 `Retry-After`。默认不信任客户端提供的转发地址头；反向代理后的用户共享代理来源限额。
+- 账户在 15 分钟内累计失败 5 次后锁定 15 分钟。状态保存在 PostgreSQL，重启或切换服务实例不能清除锁定；成功登录或通过已登录会话修改密码会重置失败计数。账户被锁时可等待到期，或由主机管理员使用 `reset-password.sh` 恢复。
+- 认证审计同时写入服务日志和 PostgreSQL 的 `auth_audit_log`，记录初始化、登录成功/失败、限速、锁定、密码修改与脚本重置。只保存时间、动作、结果、固定原因码及来源地址，不保存密码、密码哈希、token、请求正文或任意用户名。重复的限速事件按窗口合并；历史记录随写入定期清理，保留约 90 天、最多约 10 万条。审计数据应仅供管理员访问。
 
 ### 反向代理部署（HTTPS / 只开放 443）
 
@@ -258,8 +279,6 @@ server {
 > 仅当 SSE 需要走与页面不同的来源（如独立子域）时，才在**构建期**设置 `NEXT_PUBLIC_SSE_BASE`（该变量在 `next build` 时固化进静态包，容器运行时再设无效）。
 
 ---
-
-
 
 ## 开发
 
@@ -341,6 +360,7 @@ flowchart TB
   WK -.-> EXT
   MA -.-> EXT
 ```
+
 
 | 层 | 职责 |
 | --- | --- |
@@ -461,13 +481,25 @@ flowchart TB
 
 ---
 
-## 交流群
+## 项目文档
 
-扫码关注微信公众号 **SecSentry**，在公众号后台私信即可入群交流。
+- [架构复核与演进设计](docs/架构复核与演进设计.md)：复核后的可靠性设计，明确先审计、再加固完成权限、图事务与规划恢复，随后接入四道门。
+- [问题驱动的实验搜索架构](docs/问题驱动的实验搜索架构.md)：以现有 Planner 加四道门为主方案，规定独立控制器的必要条件、残余失败样本和四组对照验收。
+- [创新路线与版本规划](docs/创新路线/README.md)：M0—M4 实施顺序与六条能力方向；R05 作为公共基础，R02 优先，R03 先做可达性，R01/R06 随依据与复测推进，R04 后置。新增机制均为待实施设计。
+
+---
+
+## 交流与社区
+
+本仓库后续由 **棉花糖** 持续维护，欢迎通过以下方式交流共建：
+
+- 🐛 **问题反馈 / 功能建议**：[提交 Issue](https://github.com/mhtsec/ARTEX/issues)
+- 🛠 **代码共建**：欢迎提交 [Pull Request](https://github.com/mhtsec/ARTEX/pulls)
+- 💬 **交流群**：扫码关注微信公众号 **棉花糖fans**，在**菜单栏点击「找棉花糖」**加好友，添加后发送 **「ARTEX」** 即可受邀进群
 
 <div align="center">
 
-<img src="screenshots/wx.png" alt="微信公众号 SecSentry" width="480" />
+<img src="screenshots/wx_mhtsec.png" alt="微信公众号 棉花糖fans" width="560" />
 
 </div>
 

@@ -180,6 +180,8 @@ package_binary() {
   else
     cp start.sh "$package_root/"
     chmod +x "$package_root/start.sh"
+    cp reset-password.sh "$package_root/"
+    chmod +x "$package_root/reset-password.sh"
   fi
   cp -R skills "$package_root/"
   cp config.example.json "$package_root/"

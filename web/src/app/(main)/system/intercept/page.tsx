@@ -200,6 +200,8 @@ const defaultJudge = (): JudgeConfig => ({
   profile_id: 0,
   prompt: "",
   timeout_seconds: 15,
+  retry_count: 0,
+  retry_interval_ms: 1000,
   fail_action: "allow",
   ask_timeout_seconds: 300,
   ask_timeout_action: "deny",
@@ -375,7 +377,7 @@ function JudgeCard() {
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field label="模型判定超时（秒）">
+                <Field label="每次模型判定超时（秒）">
                   <Input
                     type="number"
                     min={1}
@@ -386,7 +388,35 @@ function JudgeCard() {
                     }}
                   />
                 </Field>
-                <Field label="模型失败时（出错 / 超时 / 无法解析）">
+                <Field label="审核失败重试次数（0 为不重试）">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={10}
+                    value={cfg.retry_count}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (Number.isInteger(n) && n >= 0 && n <= 10) patch({ retry_count: n });
+                    }}
+                  />
+                </Field>
+                <Field label="审核重试间隔（毫秒）">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={60000}
+                    step={100}
+                    value={cfg.retry_interval_ms}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (Number.isInteger(n) && n >= 0 && n <= 60000) patch({ retry_interval_ms: n });
+                    }}
+                  />
+                </Field>
+                <p className="text-xs text-muted-foreground">
+                  仅在审核请求出错、超时或结果无法解析时重试，不会重复执行命令；已返回的放行、拦截或人工审批决定不会重试。
+                </p>
+                <Field label="重试仍失败时（出错 / 超时 / 无法解析）">
                   <Select value={cfg.fail_action} onValueChange={(v) => patch({ fail_action: v as JudgeConfig["fail_action"] })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>

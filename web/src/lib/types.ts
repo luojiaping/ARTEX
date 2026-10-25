@@ -908,6 +908,20 @@ export interface TrafficHost {
 }
 
 // ---- App settings (runtime toggles) ----
+// Live FOFA account/quota snapshot (proxied by /api/settings/fofa/account).
+export interface FofaAccount {
+  username: string;
+  email: string;
+  isvip: boolean;
+  vip_level: number;
+  remain_api_query: number;
+  remain_api_data: number;
+  remain_free_point: number;
+  fofa_point: number;
+  fcoin: number;
+  checked_at: string;
+}
+
 export interface Settings {
   traffic_capture: boolean;
   agent_traffic_binding: boolean; // Agent 自动绑定流量证据，默认关闭；不影响人工绑定
@@ -927,6 +941,12 @@ export interface Settings {
   // MITM 上游；关闭捕获时直接注入 agent 的 bash/WebFetch。空=直连。
   global_proxy?: string;
   python_interpreter?: string; // 自定义脚本工具的 python 解释器路径(空=运行时检测)
+  // FOFA 网络空间测绘。fofa_key_set 只表示是否已存 key（值永不回显）；
+  // PUT 时 fofa_key 传 null=不改、""=清空、非空=保存新值。
+  fofa_key_set?: boolean;
+  fofa_key?: string;
+  fofa_base_url?: string; // 空=官方 https://fofa.info
+  fofa_rate_limit?: number; // 全局请求速率（次/秒），默认 1.5
   workers?: number; // 并发工作 agent 数(默认3)；对之后启动的任务生效
   // 任务并发上限:同时「运行中」的任务数上限。关闭=不限;开启后新建任务超限则排队,有空位自动启动。
   task_concurrency_enabled?: boolean; // 默认 false
@@ -1326,7 +1346,9 @@ export interface JudgeConfig {
   enabled: boolean;
   profile_id: number; // 0 = 跟随激活/默认配置
   prompt: string; // 判定提示词;GET 未设置时后端回填内置模板全文
-  timeout_seconds: number; // 模型调用超时
+  timeout_seconds: number; // 每次模型审核超时
+  retry_count: number; // 失败后的额外审核次数，0 为不重试
+  retry_interval_ms: number; // 审核重试间隔（毫秒）
   fail_action: "allow" | "ask" | "deny"; // 模型出错/超时/不可解析时的回退
   ask_timeout_seconds: number; // 模型判 ask 转人工后的审批等待超时
   ask_timeout_action: "allow" | "deny"; // 审批超时后的默认动作
@@ -1609,4 +1631,196 @@ export interface InterceptExecution {
   session: string;
   seq: number;
   items: Activity[];
+}
+
+// ---- 凭据猎手（/api/credentials） ----
+export interface CredentialEndpoint {
+  protocol: string;
+  base: string;
+}
+
+export interface CredentialProxyMeta {
+  protocol: string;
+  server: string;
+  port: number;
+  status: string;
+  delay_ms?: number;
+  exit_ip?: string;
+  exit_country?: string;
+  message?: string;
+  checked_at?: string;
+}
+
+export interface CredentialEntry {
+  id: number;
+  uid: string;
+  kind: string;
+  pclass: string;
+  provider: string;
+  provider_name: string;
+  variant: string;
+  variant_label: string;
+  service: string;
+  service_family: string;
+  protocol: string;
+  masked: string;
+  status: string;
+  status_detail: string;
+  quota?: Record<string, unknown>;
+  quota_kind: string;
+  risk: string;
+  manual_status: string;
+  manual_status_at?: string;
+  classification?: Record<string, unknown>;
+  source_url: string;
+  evidence_path: string;
+  asset_id?: number;
+  task_id?: number;
+  conversation_id?: number;
+  context?: string;
+  extra?: Record<string, unknown>;
+  found_at: string;
+  checked_at?: string;
+  last_probe_source?: string;
+  fail_count: number;
+  next_probe_at?: string;
+  archived: boolean;
+  proxy?: CredentialProxyMeta;
+}
+
+export interface CredentialSource {
+  url: string;
+  evidence_path: string;
+  note?: string;
+  created_at: string;
+}
+
+export interface CredentialList {
+  total: number;
+  items: CredentialEntry[];
+}
+
+export interface CredentialStats {
+  total: number;
+  valid: number;
+  invalid: number;
+  unverified: number;
+  proxy_alive: number;
+  proxy_dead: number;
+  by_kind: Record<string, number>;
+  by_provider: Record<string, number>;
+  by_status: Record<string, number>;
+}
+
+export interface CredentialVerifyResult {
+  uid: string;
+  kind: string;
+  pclass: string;
+  provider: string;
+  provider_name: string;
+  variant: string;
+  variant_label: string;
+  service: string;
+  status: string;
+  detail: string;
+  http_status?: number;
+  protocol?: string;
+  endpoint?: string;
+  model?: string;
+  error_kind?: string;
+  quota_kind: string;
+  elapsed_ms: number;
+  quota?: Record<string, unknown>;
+  checked_at: string;
+}
+
+export interface CredentialFacetItem {
+  value: string;
+  label?: string;
+  pclass?: string;
+  provider_name?: string;
+  variant_label?: string;
+  n: number;
+}
+
+export interface CredentialFacets {
+  total: number;
+  llm_key: number;
+  oauth: number;
+  valid: number;
+  warn: number;
+  invalid: number;
+  unverified: number;
+  probed: number;
+  quota_supported: number;
+  proxy_alive: number;
+  by_pclass: CredentialFacetItem[];
+  by_provider: CredentialFacetItem[];
+  by_variant: CredentialFacetItem[];
+  by_status: CredentialFacetItem[];
+  by_risk: CredentialFacetItem[];
+  by_service: CredentialFacetItem[];
+  by_protocol: CredentialFacetItem[];
+}
+
+export interface CredentialProviderVariant {
+  id: string;
+  label: string;
+  base: string;
+  model: string;
+  avail: string;
+  quota: string;
+  protocol?: string;
+  endpoints?: CredentialEndpoint[];
+  models?: string[];
+}
+
+export interface CredentialProvider {
+  id: string;
+  name: string;
+  class: string;
+  pclass: string;
+  style: string;
+  base: string;
+  model: string;
+  quota: string;
+  avail: string;
+  preset?: string;
+  endpoints?: CredentialEndpoint[];
+  models?: string[];
+  website?: string;
+  keys_url?: string;
+  variants: CredentialProviderVariant[];
+}
+
+export interface CredentialProbe {
+  id: number;
+  uid: string;
+  ts: string;
+  mode: string;
+  status: string;
+  http: number;
+  ms: number;
+  summary: string;
+  pclass: string;
+  provider: string;
+  variant: string;
+  protocol: string;
+  endpoint: string;
+  model: string;
+  error_kind: string;
+  quota_kind: string;
+  quota?: Record<string, unknown>;
+  source: string;
+}
+
+export interface ProxyProbeResult {
+  uid: string;
+  protocol: string;
+  server: string;
+  port: number;
+  status: string;
+  delay_ms?: number;
+  url?: string;
+  message?: string;
 }

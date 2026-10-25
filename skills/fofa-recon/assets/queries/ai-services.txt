@@ -1,0 +1,52 @@
+# FOFA 查询清单 · AI / LLM 服务暴露
+# 用法：整行复制查询行（跳过 # 注释）粘贴到 FOFA 搜索框；size 为 fofa_search 单页条数建议。
+# 规模是量级估计，非实测；标「需 stats」的先跑 fofa_stats 再定 size。
+# 边界：只做暴露面确认，只 GET 根页与只读元数据接口，不做推理、不拉模型。
+
+# AI-01 Ollama 根页横幅（最稳的单特征） | 规模 1e4-1e5 | 误报 低 | size 50
+body="Ollama is running"
+
+# AI-02 Ollama 默认端口（需人工确认，端口可能被复用） | 规模 1e5 | 误报 中 | size 50
+port="11434" && protocol="http"
+
+# AI-03 Open WebUI 登录页 | 规模 1e3-1e4 | 误报 低 | size 50
+title="Open WebUI"
+
+# AI-04 Open WebUI 双特征收紧 | 规模 1e3 | 误报 低 | size 50
+body="open-webui" && title="Open WebUI"
+
+# AI-05 one-api 控制台 | 规模 1e3 | 误报 低 | size 100
+title="One API"
+
+# AI-06 new-api 控制台（文档页会误报） | 规模 1e3 | 误报 中 | size 100
+title="New API"
+
+# AI-07 LocalAI | 规模 1e2-1e3 | 误报 低 | size 50
+title="LocalAI"
+
+# AI-08 oobabooga Text Generation WebUI | 规模 1e2-1e3 | 误报 低 | size 50
+title="Text Generation WebUI"
+
+# AI-09 LM Studio 默认端口（必须再确认 /v1/models） | 规模 1e4 | 误报 高 | size 50
+port="1234" && protocol="http"
+
+# AI-10 LibreChat | 规模 1e2-1e3 | 误报 低 | size 50
+title="LibreChat"
+
+# AI-11 AnythingLLM | 规模 1e2-1e3 | 误报 低 | size 50
+title="AnythingLLM"
+
+# AI-12 Dify（title + body 双条件） | 规模 1e3 | 误报 中 | size 50
+title="Dify" && body="dify"
+
+# AI-13 vLLM（无固定 Web 指纹，命中后确认 /v1/models） | 规模 需 stats | 误报 中 | size 50
+body="vLLM"
+
+# AI-14 本地 LLM 常见前端 NextChat | 规模 1e3 | 误报 低 | size 50
+title="NextChat"
+
+# AI-15 OpenAI 兼容服务：8000 + vLLM 双条件 | 规模 需 stats | 误报 中 | size 50
+port="8000" && protocol="http" && body="vLLM"
+
+# AI-16 llama.cpp server 自带 Web UI | 规模 需 stats | 误报 中 | size 50
+body="llama.cpp"

@@ -1,8 +1,15 @@
 package server
 
 import (
+	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
@@ -12,13 +19,14 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Autumn-27/artex/db"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
 const (
 	jwtKeyFilename = "jwt.key"
-	authPassKey    = "auth.password_hash"
+	authPassKey    = db.AuthPasswordKey
 	jwtTTL         = 7 * 24 * time.Hour
 	keyChars       = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
@@ -83,28 +91,39 @@ func loadOrCreateJWTKey(keyDir, dataDir string) ([]byte, error) {
 	return buf, nil
 }
 
-// signJWT issues a 7-day HS256 token for user ARTEX.
-func signJWT(key []byte) (string, error) {
-	return jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Subject:   "ARTEX",
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(jwtTTL)),
-		IssuedAt:  jwt.NewNumericDate(time.Now()),
+// authClaims binds a session to the current credential without exposing its hash.
+type authClaims struct {
+	Credential string `json:"cv"`
+	jwt.RegisteredClaims
+}
+
+func credentialBinding(key []byte, hash string) string {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte("ARTEX credential binding\x00"))
+	mac.Write([]byte(hash))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func signJWT(key []byte, hash string) (string, error) {
+	if hash == "" {
+		return "", fmt.Errorf("password not initialized")
+	}
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, authClaims{
+		Credential:       credentialBinding(key, hash),
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "ARTEX", ExpiresAt: jwt.NewNumericDate(time.Now().Add(jwtTTL)), IssuedAt: jwt.NewNumericDate(time.Now())},
 	}).SignedString(key)
 }
 
-// verifyJWT returns true when tokenStr is a valid, non-expired HS256 token.
-func verifyJWT(tokenStr string, key []byte) bool {
-	t, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return key, nil
-	})
-	return err == nil && t.Valid
+func parseAuthJWT(token string, key []byte) (*authClaims, error) {
+	claims := &authClaims{}
+	parsed, err := jwt.ParseWithClaims(token, claims, func(*jwt.Token) (any, error) { return key, nil },
+		jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired(), jwt.WithSubject("ARTEX"), jwt.WithIssuedAt())
+	if err != nil || !parsed.Valid || claims.Credential == "" {
+		return nil, fmt.Errorf("invalid session")
+	}
+	return claims, nil
 }
 
-// extractToken reads the JWT from Authorization: Bearer header,
-// artex_token cookie, or ?token= query param (for SSE connections).
 func extractToken(r *http.Request) string {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimPrefix(h, "Bearer ")
@@ -115,38 +134,119 @@ func extractToken(r *http.Request) string {
 	return r.URL.Query().Get("token")
 }
 
-// requireAuth wraps h with JWT validation.
-// /api/auth/* and /api/health are exempt.
+type authCredentialContextKey struct{}
+
+func (s *Server) readAuthPassword(r *http.Request) (string, error) {
+	if s.m == nil || s.m.pg == nil {
+		return "", fmt.Errorf("data source unavailable")
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	return s.m.pg.AuthPassword(ctx)
+}
+
+func (s *Server) authenticatedHash(w http.ResponseWriter, r *http.Request) (string, int) {
+	if hash, ok := r.Context().Value(authCredentialContextKey{}).(string); ok {
+		return hash, 0
+	}
+	claims, err := parseAuthJWT(extractToken(r), s.jwtKey)
+	if err != nil {
+		writeErr(w, 401, "token 无效或已过期，请重新登录")
+		return "", 401
+	}
+	hash, err := s.readAuthPassword(r)
+	if err != nil {
+		writeErr(w, 503, errDataSourceUnavailable)
+		return "", 503
+	}
+	if hash == "" || !hmac.Equal([]byte(claims.Credential), []byte(credentialBinding(s.jwtKey, hash))) {
+		writeErr(w, 401, "登录凭证已失效，请重新登录")
+		return "", 401
+	}
+	return hash, 0
+}
+
+func (s *Server) auditSessionFailure(r *http.Request, status int) {
+	if status == 503 {
+		s.auditAuth(r, "password_change", "unavailable", "data_source")
+		return
+	}
+	s.auditAuth(r, "password_change", "rejected", "invalid_session")
+}
+
 func (s *Server) requireAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		p := r.URL.Path
-		if strings.HasPrefix(p, "/api/auth/") || p == "/api/health" {
+		switch r.URL.Path {
+		case "/api/auth/status", "/api/auth/init", "/api/auth/login", "/api/health":
 			h.ServeHTTP(w, r)
 			return
 		}
-		tok := extractToken(r)
-		if tok == "" {
-			writeErr(w, 401, "未授权")
+		hash, status := s.authenticatedHash(w, r)
+		if status != 0 {
+			if r.URL.Path == "/api/auth/change-password" {
+				s.auditSessionFailure(r, status)
+			}
 			return
 		}
-		if !verifyJWT(tok, s.jwtKey) {
-			writeErr(w, 401, "token 无效或已过期")
-			return
-		}
+		ctx, cancel := context.WithCancel(r.Context())
+		defer s.authenticationGuard().registerSession(hash, cancel)()
+		r = r.WithContext(context.WithValue(ctx, authCredentialContextKey{}, hash))
+		// Short requests exit immediately. Long-lived streams also observe resets
+		// made by another instance or the operator's password recovery script.
+		go func() {
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if _, err := parseAuthJWT(extractToken(r), s.jwtKey); err != nil {
+						cancel()
+						return
+					}
+					current, err := s.readAuthPassword(r)
+					if err != nil || current != hash {
+						cancel()
+						return
+					}
+				}
+			}
+		}()
 		h.ServeHTTP(w, r)
 	})
 }
 
-// GET /api/auth/status — reports whether the admin password has been initialised.
-// 读失败必须回 503 而不是 initialized:false：前端在 initialized:false 时会把用户
-// 送到 /setup 去设置密码（login/page.tsx），把数据库故障包装成 200 等于把用户往
-// 覆盖已有密码的路上推。
-func (s *Server) authStatus(w http.ResponseWriter, r *http.Request) {
-	pg := s.pg(w)
-	if pg == nil {
-		return
+func decodeAuth(w http.ResponseWriter, r *http.Request, into any) error {
+	controller := http.NewResponseController(w)
+	decoded := false
+	defer func() {
+		if decoded {
+			_ = controller.SetReadDeadline(time.Time{})
+			return
+		}
+		// Do not drain an incomplete body without a deadline for keep-alive.
+		r.Close = true
+		w.Header().Set("Connection", "close")
+	}()
+	if err := controller.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return err
 	}
-	hash, _, err := pg.GetSetting(authPassKey)
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(into); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return fmt.Errorf("invalid request")
+	}
+	decoded = true
+	return nil
+}
+
+func (s *Server) authStatus(w http.ResponseWriter, r *http.Request) {
+	hash, err := s.readAuthPassword(r)
 	if err != nil {
 		writeErr(w, 503, errDataSourceUnavailable)
 		return
@@ -154,95 +254,104 @@ func (s *Server) authStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"initialized": hash != ""})
 }
 
-// POST /api/auth/init — sets the password for the first time; rejected if already set.
 func (s *Server) authInit(w http.ResponseWriter, r *http.Request) {
-	pg := s.pg(w)
-	if pg == nil {
+	done, ok := s.admitAuth(w, r, "initialize")
+	if !ok {
 		return
 	}
-	existing, _, err := pg.GetSetting(authPassKey)
+	defer done()
+	existing, err := s.readAuthPassword(r)
 	if err != nil {
+		s.auditAuth(r, "initialize", "unavailable", "data_source")
 		writeErr(w, 503, errDataSourceUnavailable)
 		return
 	}
 	if existing != "" {
+		s.auditAuth(r, "initialize", "rejected", "already_initialized")
 		writeErr(w, 403, "密码已设置")
 		return
 	}
 	var req struct {
 		Password string `json:"password"`
 	}
-	if err := decode(r, &req); err != nil || req.Password == "" {
-		writeErr(w, 400, "密码不能为空")
+	if decodeAuth(w, r, &req) != nil {
+		s.auditAuth(r, "initialize", "rejected", "invalid_request")
+		writeErr(w, 400, "请求格式错误")
 		return
 	}
 	if msg := validatePassword(req.Password); msg != "" {
+		s.auditAuth(r, "initialize", "rejected", "invalid_password")
 		writeErr(w, 400, msg)
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
+		s.auditAuth(r, "initialize", "unavailable", "hashing_failed")
 		writeErr(w, 500, "密码加密失败")
 		return
 	}
-	// 用 INSERT ... ON CONFLICT DO NOTHING 而不是 upsert：上面那次 GetSetting 只是
-	// 快速失败路径，真正"仅首次可设"的保证落在主键约束上。bcrypt 要跑几十毫秒，
-	// 这期间别的请求完全可能先把密码设好，而读检查本身也可能因故障而失效。
-	inserted, err := pg.InsertSettingIfAbsent(authPassKey, string(hash))
+	event := db.AuthAuditEvent{Action: "initialize", ClientIP: authClientIP(r)}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	inserted, err := s.m.pg.WriteAuthPassword(ctx, nil, string(hash), &event)
 	if err != nil {
-		writeErr(w, 500, "保存失败: "+err.Error())
+		s.auditAuth(r, "initialize", "unavailable", "storage_failed")
+		writeErr(w, 503, errDataSourceUnavailable)
 		return
 	}
+	logAuthEvent(event)
 	if !inserted {
 		writeErr(w, 403, "密码已设置")
 		return
 	}
-	tok, err := signJWT(s.jwtKey)
+	token, err := signJWT(s.jwtKey, string(hash))
 	if err != nil {
 		writeErr(w, 500, "token 生成失败")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"token": tok})
+	writeJSON(w, 200, map[string]any{"token": token})
 }
 
-// POST /api/auth/change-password — changes the admin password. Requires a valid
-// token (this route is under /api/auth/* which requireAuth exempts, so the token
-// is validated here) AND the current password.
 func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
-	pg := s.pg(w)
-	if pg == nil {
+	done, ok := s.admitAuth(w, r, "password_change")
+	if !ok {
 		return
 	}
-	if !verifyJWT(extractToken(r), s.jwtKey) {
-		writeErr(w, 401, "未授权")
+	defer done()
+	hash, status := s.authenticatedHash(w, r)
+	if status != 0 {
+		s.auditSessionFailure(r, status)
 		return
 	}
 	var req struct {
 		OldPassword string `json:"old_password"`
 		NewPassword string `json:"new_password"`
 	}
-	if err := decode(r, &req); err != nil {
+	if decodeAuth(w, r, &req) != nil {
+		s.auditAuth(r, "password_change", "rejected", "invalid_request")
 		writeErr(w, 400, "请求格式错误")
 		return
 	}
-	if req.NewPassword == "" {
-		writeErr(w, 400, "新密码不能为空")
-		return
-	}
 	if msg := validatePassword(req.NewPassword); msg != "" {
+		s.auditAuth(r, "password_change", "rejected", "invalid_password")
 		writeErr(w, 400, msg)
 		return
 	}
-	hash, ok, err := pg.GetSetting(authPassKey)
-	if err != nil {
-		writeErr(w, 503, errDataSourceUnavailable)
-		return
-	}
-	if !ok || hash == "" {
-		writeErr(w, 403, "密码未初始化，请先设置密码")
-		return
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.OldPassword)); err != nil {
+	if len(req.OldPassword) > maxPasswordBytes || bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.OldPassword)) != nil {
+		event := db.AuthAuditEvent{Action: "password_change", ClientIP: authClientIP(r)}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		_, locked, err := s.m.pg.FinishAuthLogin(ctx, hash, false, &event)
+		if err != nil {
+			s.auditAuth(r, "password_change", "unavailable", "storage_failed")
+			writeErr(w, 503, errDataSourceUnavailable)
+			return
+		}
+		logAuthEvent(event)
+		if locked > 0 {
+			authRetry(w, locked, "登录暂时锁定，请稍后重试")
+			return
+		}
 		writeErr(w, 401, "当前密码错误")
 		return
 	}
@@ -251,48 +360,84 @@ func (s *Server) authChangePassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "密码加密失败")
 		return
 	}
-	if err := pg.SetSetting(authPassKey, string(newHash)); err != nil {
-		writeErr(w, 500, "保存失败: "+err.Error())
+	event := db.AuthAuditEvent{Action: "password_change", ClientIP: authClientIP(r)}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	changed, err := s.m.pg.WriteAuthPassword(ctx, &hash, string(newHash), &event)
+	if err != nil {
+		s.auditAuth(r, "password_change", "unavailable", "storage_failed")
+		writeErr(w, 503, errDataSourceUnavailable)
+		return
+	}
+	logAuthEvent(event)
+	if !changed {
+		writeErr(w, 409, "密码已变化，请重新登录后重试")
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
+	s.authenticationGuard().revokeSessions(string(newHash))
 }
 
-// POST /api/auth/login — validates username/password and returns a JWT.
 func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
-	pg := s.pg(w)
-	if pg == nil {
+	done, ok := s.admitAuth(w, r, "login")
+	if !ok {
 		return
 	}
+	defer done()
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := decode(r, &req); err != nil {
+	if decodeAuth(w, r, &req) != nil {
+		s.auditAuth(r, "login", "rejected", "invalid_request")
 		writeErr(w, 400, "请求格式错误")
 		return
 	}
-	if req.Username != "ARTEX" {
-		writeErr(w, 401, "用户名或密码错误")
-		return
-	}
-	hash, ok, err := pg.GetSetting(authPassKey)
+	hash, err := s.readAuthPassword(r)
 	if err != nil {
+		s.auditAuth(r, "login", "unavailable", "data_source")
 		writeErr(w, 503, errDataSourceUnavailable)
 		return
 	}
-	if !ok || hash == "" {
+	if hash == "" {
+		s.auditAuth(r, "login", "rejected", "not_initialized")
 		writeErr(w, 403, "密码未初始化，请先设置密码")
 		return
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)); err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	locked, err := s.m.pg.AuthLockRemaining(ctx, hash)
+	if err != nil {
+		s.auditAuth(r, "login", "unavailable", "data_source")
+		writeErr(w, 503, errDataSourceUnavailable)
+		return
+	}
+	if locked > 0 {
+		s.auditAuth(r, "login", "rejected", "account_locked")
+		authRetry(w, locked, "登录暂时锁定，请稍后重试")
+		return
+	}
+	valid := req.Username == "ARTEX" && len(req.Password) <= maxPasswordBytes && bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) == nil
+	event := db.AuthAuditEvent{Action: "login", ClientIP: authClientIP(r)}
+	allowed, locked, err := s.m.pg.FinishAuthLogin(ctx, hash, valid, &event)
+	if err != nil {
+		s.auditAuth(r, "login", "unavailable", "storage_failed")
+		writeErr(w, 503, errDataSourceUnavailable)
+		return
+	}
+	logAuthEvent(event)
+	if locked > 0 {
+		authRetry(w, locked, "登录暂时锁定，请稍后重试")
+		return
+	}
+	if !allowed {
 		writeErr(w, 401, "用户名或密码错误")
 		return
 	}
-	tok, err := signJWT(s.jwtKey)
+	token, err := signJWT(s.jwtKey, hash)
 	if err != nil {
 		writeErr(w, 500, "token 生成失败")
 		return
 	}
-	writeJSON(w, 200, map[string]any{"token": tok})
+	writeJSON(w, 200, map[string]any{"token": token})
 }

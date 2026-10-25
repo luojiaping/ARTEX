@@ -139,10 +139,22 @@ export ARTEX_RESET_NEWPASS="$NEWPASS"
 SQL=$(cat <<SQL
 \\set ON_ERROR_STOP on
 \\getenv newpw ARTEX_RESET_NEWPASS
+BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 INSERT INTO settings(key, value)
 VALUES ('$PASS_KEY', crypt(:'newpw', gen_salt('bf', $BCRYPT_COST)))
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+DO \$\$
+BEGIN
+    IF to_regclass('auth_login_state') IS NOT NULL THEN
+        UPDATE auth_login_state SET failures=0, locked_until=NULL;
+    END IF;
+    IF to_regclass('auth_audit_log') IS NOT NULL THEN
+        INSERT INTO auth_audit_log(action,outcome,reason,client_ip)
+        VALUES ('password_reset','success','operator_reset','local');
+    END IF;
+END \$\$;
+COMMIT;
 SQL
 )
 
@@ -165,7 +177,7 @@ if [[ "$MODE" == "local" ]]; then
   declare -a PSQL_ARGS=()
   if [[ -n "$DSN" ]]; then
     PSQL_ARGS=("$DSN")
-    target="$DSN"
+    target="PostgreSQL（DSN 已隐藏）"
   else
     [[ -n "$USER"   ]] || die "缺少数据库用户（-U）或有效的 config.json/DSN"
     [[ -n "$DBNAME" ]] || die "缺少数据库名（-d）或有效的 config.json/DSN"

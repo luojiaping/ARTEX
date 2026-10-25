@@ -43,8 +43,10 @@ type Server struct {
 	engine *Engine
 	ctx    context.Context
 
-	skillDir string // root directory for skill subdirectories
-	jwtKey   []byte // HS256 signing key loaded from / generated into dataDir/jwt.key
+	skillDir  string // root directory for skill subdirectories
+	jwtKey    []byte // HS256 signing key loaded from / generated into dataDir/jwt.key
+	authOnce  sync.Once
+	authGuard *authGuard
 
 	// concMu serializes concurrency-cap decisions (admission + reconcile) so a
 	// scheduler tick and an HTTP settings change / task creation can't both count
@@ -218,6 +220,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			return a.TaskTimeoutWrapupMaxTurns, true
 		}
 		wireAgentAugment(m.pg, s.skillDir, s.hostTools) // 可见 skills/MCP + 流量/编排 host 工具装配进 agent 工具集
+		agent.CredServiceProvider = m.Cred              // 凭据猎手工具共享同一份加密台账/探针
 		domainReg := buildDomainReg(m.Assets())
 		wireTools(m.pg, domainReg) // 内置工具表：按 agent 过滤 + 覆盖描述/schema + 注入默认值
 		seedPrompts(m.pg)          // 内置 agent 默认提示词正文播种进 agent_prompts(仅空时)
@@ -798,7 +801,26 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/llm/records/by-model", s.pgTokenByModel) // 按模型聚合本任务 token 用量
 	mux.HandleFunc("GET /api/llm/records/{id}", s.pgGetLLMRecord)
 	mux.HandleFunc("GET /api/settings", s.getSettings)
+	mux.HandleFunc("GET /api/settings/fofa/account", s.fofaAccountInfo)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
+	// 凭据猎手台账 / 代理节点
+	mux.HandleFunc("GET /api/credentials", s.credList)
+	mux.HandleFunc("GET /api/credentials/stats", s.credStats)
+	mux.HandleFunc("GET /api/credentials/facets", s.credFacets)
+	mux.HandleFunc("GET /api/credentials/providers", s.credProviders)
+	mux.HandleFunc("GET /api/credentials/export", s.credExport)
+	mux.HandleFunc("POST /api/credentials/classify", s.credClassify)
+	mux.HandleFunc("GET /api/credentials/{uid}", s.credGet)
+	mux.HandleFunc("POST /api/credentials/verify", s.credVerifyBatch)
+	mux.HandleFunc("POST /api/credentials/{uid}/verify", s.credVerify)
+	mux.HandleFunc("POST /api/credentials/{uid}/reveal", s.credReveal)
+	mux.HandleFunc("POST /api/credentials/{uid}/status", s.credStatus)
+	mux.HandleFunc("POST /api/credentials/{uid}/variant", s.credVariant)
+	mux.HandleFunc("GET /api/credentials/{uid}/probes", s.credProbes)
+	mux.HandleFunc("POST /api/credentials/{uid}/archive", s.credArchive)
+	mux.HandleFunc("GET /api/proxy-nodes", s.credProxyList)
+	mux.HandleFunc("POST /api/proxy-nodes/probe", s.credProxyProbeBatch)
+	mux.HandleFunc("POST /api/proxy-nodes/{uid}/probe", s.credProxyProbe)
 	// 漏洞 IM 推送。渠道是「多实例 + 各自过滤规则」的资源，因此独立成一组
 	// REST 接口，而不是塞进扁平的 /api/settings 键值里。
 	mux.HandleFunc("GET /api/notify/meta", s.notifyMeta)
@@ -1615,9 +1637,17 @@ func parseTarget(text string) (scheme, host string, port int, ok bool) {
 			return scheme, host, port, true
 		}
 	}
-	if m := reIPPort.FindStringSubmatch(text); m != nil {
-		host = m[1]
-		port = portOr(m[2], 80)
+	for _, m := range reIPPort.FindAllStringSubmatchIndex(text, -1) {
+		hs, he := m[2], m[3]
+		if !standaloneIP(text, hs, he) {
+			continue
+		}
+		portStr := ""
+		if m[4] >= 0 {
+			portStr = text[m[4]:m[5]]
+		}
+		host = text[hs:he]
+		port = portOr(portStr, 80)
 		return schemeForPort(port), host, port, true
 	}
 	if m := reDomain.FindStringSubmatch(text); m != nil {
@@ -1632,10 +1662,26 @@ func parseTarget(text string) (scheme, host string, port int, ok bool) {
 }
 
 func portOr(s string, d int) int {
-	if n, err := strconv.Atoi(s); err == nil && n > 0 {
+	if n, err := strconv.Atoi(s); err == nil && n > 0 && n <= 65535 {
 		return n
 	}
 	return d
+}
+
+// standaloneIP reports whether text[hs:he] is a well-formed IPv4 literal that
+// stands on its own: every octet in 0-255, and not embedded in a longer
+// dotted/numeric run, so version-like text ("1.2.3.4.5", "1.2.3.4444") and
+// out-of-range quads ("999.999.999.999") never seed a target asset.
+func standaloneIP(text string, hs, he int) bool {
+	if hs > 0 && text[hs-1] == '.' {
+		return false
+	}
+	if he < len(text) {
+		if c := text[he]; c == '.' || (c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return net.ParseIP(text[hs:he]) != nil
 }
 func defaultPort(scheme string) int {
 	if scheme == "http" {
@@ -3289,20 +3335,32 @@ func (s *Server) settingsPayload() map[string]any {
 	if concLimit == 0 {
 		concLimit = defaultConcurrencyLimit // 关闭时也回显一个合理默认值给 UI
 	}
+	fofaKey, _, _ := s.m.pg.GetSetting(settingFOFAKey)
+	fofaBase, _, _ := s.m.pg.GetSetting(settingFOFABaseURL)
+	fofaRate := defaultFOFARate
+	if v, ok, _ := s.m.pg.GetSetting(settingFOFARate); ok {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil && f > 0 {
+			fofaRate = f
+		}
+	}
 	return map[string]any{
-		"traffic_capture":          s.m.TrafficEnabled(),
-		"agent_traffic_binding":    s.m.pg.GetBool(settingAgentTrafficBinding, false),
-		"llm_record":               s.m.LLMRecordEnabled(),
-		"web_search_enabled":       on,
-		"web_search_backend":       backend,
-		"brave_key_set":            strings.TrimSpace(braveKey) != "",
-		"tavily_key_set":           strings.TrimSpace(tavilyKey) != "",
-		"web_search_proxy":         proxy,                       // 独立出口代理(http/https/socks5)，空=直连
-		"global_proxy":             s.m.GlobalProxy(),           // 全局出口代理(http/https/socks5)，所有目标流量走它，空=直连
-		"python_interpreter":       strings.TrimSpace(pyStored), // 用户/自动设的值(空=用运行时检测)
-		"workers":                  s.m.Workers(),               // 并发工作 agent 数(默认3)；对之后启动的任务生效
-		"task_concurrency_enabled": concOn,                      // 任务并发上限开关(默认关)
-		"task_concurrency_limit":   concLimit,                   // 同时运行任务上限(开启后默认5)
+		"traffic_capture":       s.m.TrafficEnabled(),
+		"agent_traffic_binding": s.m.pg.GetBool(settingAgentTrafficBinding, false),
+		"llm_record":            s.m.LLMRecordEnabled(),
+		"web_search_enabled":    on,
+		"web_search_backend":    backend,
+		"brave_key_set":         strings.TrimSpace(braveKey) != "",
+		"tavily_key_set":        strings.TrimSpace(tavilyKey) != "",
+		"web_search_proxy":      proxy,                       // 独立出口代理(http/https/socks5)，空=直连
+		"global_proxy":          s.m.GlobalProxy(),           // 全局出口代理(http/https/socks5)，所有目标流量走它，空=直连
+		"python_interpreter":    strings.TrimSpace(pyStored), // 用户/自动设的值(空=用运行时检测)
+		// FOFA 网络空间测绘：key 只回显「是否已配置」，绝不回显值；base_url 留空=官方。
+		"fofa_key_set":             strings.TrimSpace(fofaKey) != "",
+		"fofa_base_url":            strings.TrimSpace(fofaBase),
+		"fofa_rate_limit":          fofaRate,
+		"workers":                  s.m.Workers(), // 并发工作 agent 数(默认3)；对之后启动的任务生效
+		"task_concurrency_enabled": concOn,        // 任务并发上限开关(默认关)
+		"task_concurrency_limit":   concLimit,     // 同时运行任务上限(开启后默认5)
 		// LLM 轮询(故障转移)。默认关；开启后走全局激活配置的 agent 在当前配置不可用时
 		// 自动切到下一个配置。bind_fallback 仅在轮询开启时有意义(默认关)。
 		"llm_pool_enabled":       s.m.LLMPoolEnabled(),
@@ -3372,7 +3430,11 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		WebSearchProxy   *string `json:"web_search_proxy"`   // 独立出口代理(http/https/socks5)；null=不改，""=清空
 		GlobalProxy      *string `json:"global_proxy"`       // 全局出口代理(http/https/socks5)；null=不改，""=清空(直连)
 		PythonInterp     *string `json:"python_interpreter"` // 自定义脚本工具的 python 解释器路径
-		Workers          *int    `json:"workers"`            // 并发工作 agent 数(>0)；对之后启动的任务生效
+		// FOFA. FOFAKey: null=不改，""=清空，非空=保存新 key。base_url 留空=官方。
+		FOFAKey     *string  `json:"fofa_key"`
+		FOFABaseURL *string  `json:"fofa_base_url"`
+		FOFARate    *float64 `json:"fofa_rate_limit"`
+		Workers     *int     `json:"workers"` // 并发工作 agent 数(>0)；对之后启动的任务生效
 		// 任务并发上限:同时「运行中」的任务数上限。关闭=不限;开启后新建任务超限则排队,有空位自动启动。
 		ConcurrencyEnabled *bool `json:"task_concurrency_enabled"`
 		ConcurrencyLimit   *int  `json:"task_concurrency_limit"`
@@ -3473,6 +3535,34 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.PythonInterp != nil {
 		if err := s.m.pg.SetSetting(settingPythonInterp, strings.TrimSpace(*req.PythonInterp)); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
+	if req.FOFAKey != nil {
+		if err := s.m.pg.SetSetting(settingFOFAKey, strings.TrimSpace(*req.FOFAKey)); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
+	if req.FOFABaseURL != nil {
+		base := strings.TrimRight(strings.TrimSpace(*req.FOFABaseURL), "/")
+		if base != "" && !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
+			writeErr(w, 400, "fofa_base_url 需以 http:// 或 https:// 开头")
+			return
+		}
+		if err := s.m.pg.SetSetting(settingFOFABaseURL, base); err != nil {
+			writeErr(w, 500, err.Error())
+			return
+		}
+	}
+	if req.FOFARate != nil {
+		rate := *req.FOFARate
+		if rate < 0.1 || rate > 20 {
+			writeErr(w, 400, "fofa_rate_limit 需在 0.1–20 次/秒之间")
+			return
+		}
+		if err := s.m.pg.SetSetting(settingFOFARate, strconv.FormatFloat(rate, 'f', -1, 64)); err != nil {
 			writeErr(w, 500, err.Error())
 			return
 		}

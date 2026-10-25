@@ -655,6 +655,9 @@ func (t *ToolSet) WorkerTools() []actool.CoreTool {
 		t.searchAllWorkerTraces(), t.getWorkerTrace(),
 		// node_detail：worker 拿到 intent_id/节点 id 后可查该节点完整详情（配合上面的回看）。
 		t.nodeDetail(),
+		// FOFA 资产检索：开工前先摸清目标暴露面（search 查明细，stats 估规模，
+		// account 看额度，host 看单主机聚合）。
+		t.fofaAccount(), t.fofaSearch(), t.fofaStats(), t.fofaHost(),
 		// 以下工具仍【不给】worker，只留给 planner/main（读上下文、跨 work 复盘是规划职责，
 		// worker 只做单条意图的执行与写回）：list_facts / list_companies / list_worker_traces。
 	}
@@ -678,6 +681,8 @@ func (t *ToolSet) MainAgentTools() []actool.CoreTool {
 		t.addTaskScope(),
 		// list_untested_assets：按需查本任务范围内未测资产(类型+分页)，自行决定补测。
 		t.listUntestedAssets(),
+		// FOFA 资产检索：规划前先摸清目标暴露面，或据结果扩展任务范围。
+		t.fofaAccount(), t.fofaSearch(), t.fofaStats(), t.fofaHost(),
 	}
 }
 
@@ -689,6 +694,7 @@ func (t *ToolSet) AllDomainTools() []actool.CoreTool {
 	seen := map[string]bool{}
 	var out []actool.CoreTool
 	all := append(append(t.MainAgentTools(), t.PlannerTools()...), t.WorkerTools()...)
+	all = append(all, t.CredTools()...)
 	for _, tool := range all {
 		if !seen[tool.Name()] {
 			seen[tool.Name()] = true

@@ -500,6 +500,7 @@ func (s *Server) seedOrchestrationTools() {
 	s.reseedPlannerPrompt()           // planner 提示词:重写「0 意图」正当理由 + 加量化验收核对(一次性)
 	s.reseedWorkerPrompt()            // worker 提示词:加否定结论证据门槛(一次性)
 	s.seedReporterAgent()             // 预置「报告撰写」agent + 工具绑定 + finding 触发器(一次性)
+	s.seedCredHunterAgent()           // 预置「凭据猎手」agent + 凭据工具 + 技能授权(一次性)
 	s.upgradeReporterTriggerMessage() // 老库补迁移:让 reporter 回传 evidence_version(一次性)
 	s.seedFindingTrafficTools()       // 增加可选证据参数及只读证据工具，保留用户配置
 	s.seedFindingWorkflowTools()
@@ -726,6 +727,44 @@ func (s *Server) upgradeReporterTriggerMessage() {
 		}
 		log.Printf("[reporter] 触发消息已升级为读取并回传 evidence_version")
 	}
+}
+
+// seedCredHunterAgent presets the "凭据猎手" conversational agent: it owns the
+// credhunt toolset and the three credential skills. One-shot (settings flag), so
+// deleting it in the UI does not resurrect it.
+func (s *Server) seedCredHunterAgent() {
+	const flag = "credhunter_agent_seed_v1"
+	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
+		return
+	}
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }()
+	if exist, _ := s.m.pg.GetAgentByKey("credhunter"); exist != nil {
+		return
+	}
+	a, err := s.m.pg.CreateAgent("credhunter", "凭据猎手",
+		"授权范围内的只读凭据挖掘：目录/配置文件 → LLM Key/OAuth/凭据/私钥/代理节点 → 最小验活 → 加密台账 → 报告。")
+	if err != nil {
+		log.Printf("[credhunter] 创建 agent 失败: %v", err)
+		return
+	}
+	if err := s.m.pg.SeedPromptIfEmpty(a.ID, agent.CredHunterDefaultPrompt); err != nil {
+		log.Printf("[credhunter] seed prompt 失败: %v", err)
+	}
+	_ = s.m.pg.SetAgentMaxTurns("credhunter", 100)
+	_ = s.m.pg.SetAgentRunSeconds("credhunter", 2400)
+	if err := s.m.pg.AddAgentToToolBinding("credhunter", []string{
+		"hunt_batch", "hunt_fetch", "cred_submit", "cred_list", "cred_verify",
+		"proxy_submit", "proxy_probe", "hunt_report",
+		"insert_assets", "list_assets",
+	}); err != nil {
+		log.Printf("[credhunter] 绑定工具失败: %v", err)
+	}
+	if err := s.m.pg.SetAgentSkillVisibility(a.ID, []string{
+		"credential-hunting", "llm-key-verification", "proxy-node-probe",
+	}); err != nil {
+		log.Printf("[credhunter] 授权技能失败: %v", err)
+	}
+	log.Printf("[credhunter] 已预置「凭据猎手」agent")
 }
 
 // seedReporterAgent 预置一个「报告撰写」自定义 agent(builtin=false，可在 UI 编辑/删除)：

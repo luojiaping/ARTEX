@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/Autumn-27/artex/db"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -81,4 +83,27 @@ func TestValidatePassword(t *testing.T) {
 			}
 		})
 	}
+}
+
+// testAuthToken creates a credential-bound session for HTTP integration fixtures.
+func testAuthToken(t *testing.T, s *Server) (string, error) {
+	t.Helper()
+	if s.m == nil || s.m.pg == nil {
+		return "", fmt.Errorf("test database missing")
+	}
+	hash, ok, err := s.m.pg.GetSetting(db.AuthPasswordKey)
+	if err != nil {
+		return "", err
+	}
+	if !ok || hash == "" {
+		_, err = s.m.pg.InsertSettingIfAbsent(db.AuthPasswordKey, "integration-test-credential")
+		if err != nil {
+			return "", err
+		}
+		hash, _, err = s.m.pg.GetSetting(db.AuthPasswordKey)
+		if err != nil {
+			return "", err
+		}
+	}
+	return signJWT(s.jwtKey, hash)
 }
