@@ -17,8 +17,6 @@ import type { FofaAccount, Settings } from "@/lib/types";
 
 import { UpdateCard } from "./_components/update-card";
 
-import { UpdateCard } from "./_components/update-card";
-
 export default function SystemSettingsPage() {
   const [trafficCapture, setTrafficCapture] = React.useState(false);
   const [agentTrafficBinding, setAgentTrafficBinding] = React.useState(false);
