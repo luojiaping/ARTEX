@@ -118,6 +118,13 @@ const PROTOCOL_LABEL: Record<string, string> = {
   gemini: "Gemini",
 };
 
+const SOURCE_LABEL: Record<string, string> = {
+  legacy: "历史",
+  verify: "本次",
+  manual: "手动",
+  both: "历史",
+};
+
 type ViewMode = "cards" | "list";
 
 type Filters = {
@@ -1448,7 +1455,7 @@ export default function CredentialsPage() {
                         probes.map((p) => (
                           <TableRow key={p.id}>
                             <TableCell className="text-muted-foreground text-xs">{fmtShort(p.ts)}</TableCell>
-                            <TableCell className="text-xs">{p.source === "legacy" ? "历史" : p.source}</TableCell>
+                            <TableCell className="text-xs">{SOURCE_LABEL[p.source] ?? p.source}</TableCell>
                             <TableCell className="text-xs">{STATUS_LABEL[p.status] ?? p.status}</TableCell>
                             <TableCell className="text-xs">
                               {PROTOCOL_LABEL[p.protocol] ?? p.protocol ?? "—"}
