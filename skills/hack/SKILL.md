@@ -53,6 +53,10 @@ description: >-
 | 前后端对 CL/TE 或 HTTP/2 边界理解不一致 | `request-smuggling` |
 | WebSocket 升级、Origin 校验、实时消息 | `websocket-security` |
 | 优惠券、库存、余额、一次性操作 | `race-condition` / `business-logic-vulnerabilities` |
+| `/.git`、`/.svn`、备份、`.env` 暴露 | `insecure-source-code-management` |
+| Host 头被信任、密码重置链接可投毒 | `http-host-header-attacks` |
+| CDN/反代缓存了带身份的内容 | `web-cache-deception` |
+| Redis/Rsync/AJP/YARN/H2 等管理口暴露 | `unauthorized-access-common-services` |
 
 ## 核心直觉
 
@@ -65,9 +69,22 @@ description: >-
 7. 竞态优先打一次性动作：领券、积分、重置、邀请、试用、库存扣减。
 8. JWT 先看 `alg`、`kid`、JWKS 和密钥来源，不要盲目喷 payload。
 
-## 未安装的专题
+## 已入库但默认未开放
 
-原型污染、类型混淆、HTTP 参数污染、XSLT、CSV 公式、反序列化、JNDI、
-表达式语言注入、CRLF、依赖混淆、子域接管、AD/移动/Pwn/逆向/密码学/取证
+以下专题已经导入技能库，但默认没有授权给当前 agent；需要时在「系统 → Skill」
+里按任务开放，不要假设它们已经加载：
+
+- 高级 Web：`open-redirect`、`http-parameter-pollution`、`type-juggling`、
+  `crlf-injection`、`csp-bypass-advanced`、`prototype-pollution`、
+  `prototype-pollution-advanced`、`401-403-bypass-techniques`、
+  `waf-bypass-techniques`、`jndi-injection`、`expression-language-injection`
+- 资产专用：`subdomain-takeover`（通常授权给资产搜索 agent）
+- 内网/AD：`linux-privilege-escalation`、`windows-privilege-escalation`、
+  `active-directory-kerberos-attacks`、`ntlm-relay-coercion`
+
+## 尚未导入的专题
+
+XSLT、CSV 公式、反序列化、依赖混淆、点击劫持、邮件头注入、dangling markup、
+Ghost Bits、HTTP/2 专项、DNS 重绑定，以及移动/Pwn/逆向/密码学/取证/链上
 尚未导入。遇到这些场景时，先按通用方法论做最小验证，或另行导入对应专题；
 不要把未安装的 skill 名当作可调用工具。

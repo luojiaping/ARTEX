@@ -27,6 +27,18 @@ to unresolved placeholders or destructive examples.
   SCENARIOS.md` and `upload-insecure-files/SCENARIOS.md`) could not be imported:
   the workstation antivirus blocked them as offensive payload corpora. The main
   skills state that those extended scenarios are not shipped.
+- Phase 2 subset (advanced web + host/AD): `insecure-source-code-management`,
+  `subdomain-takeover`, `open-redirect`, `http-host-header-attacks`,
+  `web-cache-deception`, `http-parameter-pollution`, `type-juggling`,
+  `crlf-injection`, `csp-bypass-advanced`, `prototype-pollution`,
+  `prototype-pollution-advanced`, `401-403-bypass-techniques`,
+  `waf-bypass-techniques`, `unauthorized-access-common-services`,
+  `jndi-injection`, `expression-language-injection`,
+  `linux-privilege-escalation`, `windows-privilege-escalation`,
+  `active-directory-kerberos-attacks`, `ntlm-relay-coercion`.
+- The optional `unauthorized-access-common-services/PORT_SERVICE_MATRIX.md`
+  companion was blocked by the workstation antivirus; the main skill notes that
+  it is not shipped.
 
 ## Pa55w0rd/secknowledge-skill
 
@@ -74,3 +86,9 @@ The following archives were inspected but not imported.
 | `教学文档` | Not a skill; it is a target-specific xTun reverse-engineering course with no license. |
 | `hack-skills` API/recon topics | `api-sec`, `api-recon-and-docs`, `api-authorization-and-bola`, `api-auth-and-jwt-abuse`, and `graphql-and-hidden-parameters` are 48–76 line checklists that duplicate the much deeper existing `api-recon`. `recon-for-sec` and `recon-and-methodology` recommend masscan/nmap/ffuf active scanning without the `scan-opsec` egress rules, duplicating `asset-acquisition` and `fofa-recon`. |
 | `hack-skills` AI topics | `llm-prompt-injection` and `ai-ml-security` are covered more broadly by `secknowledge-skill` (GAARM 173 + OWASP LLM/ASI). Importing both would duplicate AI-security triggers and push the skill listing over its discovery budget. |
+| `hack-skills` binary/RE/crypto/mobile/forensics/blockchain topics | No ARTEX agent consumes them today. They are high quality but would be dead weight; defer to a dedicated CTF/reversing agent pack. |
+| `deserialization-insecure` | The 725-line document repeats its Ruby/.NET/Node sections twice (sections 8–10 and 11–13). It needs deduplication before import; `jndi-injection`, `expression-language-injection`, and `secknowledge` cover parts of the same surface. |
+| `http2-specific-attacks` | Overlaps the already imported `request-smuggling/H2_SMUGGLING_VARIANTS.md` (H2.CL/H2.TE/downgrade). |
+| `dns-rebinding-attacks` | Overlaps `ssrf-server-side-request-forgery/URL_PARSER_TRICKS.md` (DNS rebinding, TTL, IMDSv2). |
+| `ghost-bits-cast-attack` | 800-line, highly specialized Java char-narrowing corpus with 10 references to uninstalled skills; defer until a Java-focused agent exists. |
+| `xslt-injection`, `csv-formula-injection`, `email-header-injection`, `clickjacking`, `dangling-markup-injection`, `dependency-confusion` | Niche or low-impact for the current web/asset/credential agents; not worth the skill-listing budget. |
